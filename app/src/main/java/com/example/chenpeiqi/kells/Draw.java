@@ -162,7 +162,7 @@ class Draw implements Runnable {
             //背景
             drawFrame(canvas,0,false);
             //下面是天气和地理部分
-//            drawSomething(i,wheLocCit,canvas,wlcPara,lp,!lor,la,wlcStaEnd,5,true);
+            drawSomething(i,wheLocCit,canvas,wlcPara,lp,!lor,la,wlcStaEnd,5,true);
             //下面是content部分
             drawSomething(i,content,canvas,conPara,tp,lor,ta,conStaEnd,15,false);
 
