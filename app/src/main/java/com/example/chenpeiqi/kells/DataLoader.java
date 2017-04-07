@@ -5,11 +5,15 @@ import android.content.SharedPreferences;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
 import android.os.Bundle;
+import android.util.Log;
 
 import java.util.Date;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import static com.example.chenpeiqi.kells.Tool.array;
+import static com.example.chenpeiqi.kells.Tool.same;
 
 /**
  * Created on 16/11/9.
@@ -18,6 +22,9 @@ class DataLoader implements Callable<Bundle> {
 
     private Bundle request;
     private Context context;
+    private static final int verCount = 15;
+    private static final String tag = "DataLoader";
+    private static final int pw = 40;
 
     DataLoader(Context context,Bundle origin) {
         this.context = context;
@@ -64,23 +71,51 @@ class DataLoader implements Callable<Bundle> {
     private Bundle finalEdit(Bundle bFromS,int[] size) {
         float[] ori = bFromS.getFloatArray("path");
         float[] posTan = bFromS.getFloatArray("posTan");
-        float[] ta = calTA(posTan,size,15);
-        float[] la = calTA(posTan,size,5);
-//    float[] ta = calTA(getAll(p2p(ori)),size);
+        float[] posTanForTA = new float[posTan.length*4];
+        int extraCordCounter = 0;
+        for (int i = 0;i<posTan.length/4;i++) {
+            float[] xs = new float[]{posTan[i*4]-pw/2,posTan[i*4]+pw/2},
+                    ys = new float[]{posTan[i*4+1]-pw/2,posTan[i*4+1]+pw/2};
+            for (float x : xs) {
+                for (float y : ys) {
+                    posTanForTA[extraCordCounter*4] = x;
+                    posTanForTA[extraCordCounter*4+1] = y;
+                    extraCordCounter++;
+
+                }
+            }
+        }
+        Tool.header();
+        Tool.array(posTanForTA);
+        float[] ta = calTA(posTanForTA,size,verCount);
+//        Tool.array(ta0);
+//        float[] ta1 = calTA(getAll(p2p(ori)),size,verCount);
+//        float[] ta = new float[verCount*2];
+//        for (int i = 0;i<verCount;i++) {
+//            if (i==1) {
+//                Tool.i("ta0",ta0[i*2+1]);
+//                Tool.i("ta1",ta1[i*2+1]);
+//            }
+//            ta[i*2] = Math.abs(ta0[i*2]-ta1[i*2])<40? ta0[i*2]: ta1[i*2];
+//            ta[i*2+1] = Math.abs(ta0[i*2+1]-ta1[i*2+1])<50? ta0[i*2+1]: ta1[i*2+1];
+//        }
         String[] dirs = getDirs(ori,size);
-        int[] belonging = calBelonging(ta,15,size);
-//    boolean lor = calLeftRight(belonging);
+        int[] areaBelong = calBelong(ta,verCount,size);
+//    boolean lor = calLeftRight(areaBelong);
         Cord cord = new Cord(new float[]{ori[0],ori[1]},size);
-        boolean kind = calKind(cord.getArea());
-        boolean lor = calLOR(ta,size,belonging);
-        int[] conStaEnd = calTAStartEnd(ta,size,lor,kind,15);
-        int[] wlcStaEnd = calTAStartEnd(la,size,!lor,kind,5);
+        boolean lor = calLOR(cord.getArea());
+        boolean timeZone = calTimeZone(cord.getArea());
+        Log.i("DataLoader","calLOR:"+lor);
+        int[] staEnd = calEndStart(ta.length/2,areaBelong,lor);
         bFromS.putFloatArray("ta",ta);
-        bFromS.putFloatArray("la",la);
+        bFromS.putFloatArray("path",ori);
+        array("DataLoader","path",ori);
         bFromS.putStringArray("dirs",dirs);
-        bFromS.putIntArray("belonging",belonging);
-        bFromS.putIntArray("conStaEnd",conStaEnd);
-        bFromS.putIntArray("wlcStaEnd",wlcStaEnd);
+        bFromS.putFloatArray("pt",posTanForTA);
+        bFromS.putIntArray("areaBelong",areaBelong);
+        bFromS.putIntArray("staEnd",staEnd);
+        bFromS.putBoolean("timeZone",timeZone);
+        bFromS.putInt("verCount",verCount);
         //lor就是content写在哪里的依据,但是同样写在左边/右边,类型不同,起止ta也会有所不同
         bFromS.putBoolean("lor",lor);
         return bFromS;
@@ -99,25 +134,6 @@ class DataLoader implements Callable<Bundle> {
         float sx = start.getX(), sy = start.getY();
         cp[0] = sx == 0 || sx == size[0]? end.getX(): sx;
         cp[1] = sy == 0 || sy == size[1]? end.getY(): sy;
-        //random way initialize CP
-//    switch (start.getArea()) {
-//    case ONE: case SIX:
-//        cp[0] = (float) (Math.random()*size[0]/8);
-//        cp[1] = (float) (size[1]*7/8+Math.random()*size[1]/8);
-//        break;
-//    case TWO: case FIVE:
-//        cp[0] = (float) (size[0]*7/8+Math.random()*size[0]/8);
-//        cp[1] = (float) Math.random()*size[1]/8;
-//        break;
-//    case THREE: case EIGHT:
-//        cp[0] = (float) (size[0]*7/8+Math.random()*size[0]/8);
-//        cp[1] = (float) (size[1]*7/8+Math.random()*size[1]/8);
-//        break;
-//    case FOUR: case SEVEN:
-//        cp[0] = (float) Math.random()*size[0]/8;
-//        cp[1] = (float) Math.random()*size[1]/8;
-//        break;
-//    }
         return new float[]
                 {start.getX(),start.getY(),cp[0],cp[1],end.getX(),end.getY()};
     }
@@ -199,13 +215,15 @@ class DataLoader implements Callable<Bundle> {
 
         PathMeasure pathMeasure = new PathMeasure(path,false);
         int length = (int) pathMeasure.getLength();   //测量路径长度
-        float[] positions = new float[length*2];
+        float[] positions = new float[length*4];
         for (int i = 0;i<length;i++) {
             float[] cord = new float[2];
             float[] tan = new float[2];
             if (pathMeasure.getPosTan(i,cord,tan)) {
                 positions[i*2] = cord[0];
                 positions[i*2+1] = cord[1];
+                positions[i*4+2] = tan[0];
+                positions[i*4+3] = tan[1];
             }
         }
         return positions;
@@ -221,51 +239,39 @@ class DataLoader implements Callable<Bundle> {
         for (int i = 0;i<length;i++) {
             int a = (int) posTan[i*4+1]*verCount/size[1];//--->/(size[1]/10)
             a = a>=verCount? verCount-1: a;
-            acd[a*2] = Math.min(posTan[i*4]-50,acd[a*2]);
-            acd[a*2+1] = Math.max(posTan[i*4]+50,acd[a*2+1]);
+            acd[a*2] = Math.min(posTan[i*4]-10,acd[a*2]);
+            acd[a*2+1] = Math.max(posTan[i*4]+10,acd[a*2+1]);
         }
+        Tool.header();
+        Tool.array(acd);
         return acd;
     }
 
-    private int[] calTAStartEnd(float[] ta,int[] size,boolean lor,boolean kind,int verCount) {
-        int counter = ta.length/2;
-        int[] startAndEnd = new int[2];
-        //first area not [1080,0]
-        if (XOR(lor,kind)) {
-            for (int i = 0;i<counter;i++) {
-                if (ta[i*2] != size[0] && ta[i*2+1] != 0) {
-                    startAndEnd[0] = i;
-                    break;
+    private int[] calEndStart(int verCount,int[] belong,boolean lor) {
+        int[] es = new int[]{0,verCount};
+        for (int i = 0;i<verCount;i++) {
+            switch (belong[i]) {
+            case 1://仅左边可用,如lor为true应将此时的i更新为es[0]的最大值,如false
+                if (lor) {
+                    es[0] = Math.max(es[0],i);
+                } else {
+                    es[1] = Math.min(es[1],i);
                 }
-            }
-            //last area not [1080,0]
-            for (int i = counter-1;i>-1;i--) {
-                if (ta[i*2] != size[0] && ta[i*2+1] != 0) {
-                    startAndEnd[1] = i;
-                    break;
+                break;
+            case 2:
+                if (lor) {
+                    es[1] = Math.min(es[1],i);
+                } else {
+                    es[0] = Math.max(es[0],i);
                 }
+                break;
+            case 3:
+                es[0] = Math.max(es[0],i);
+                es[1] = Math.min(es[1],i);
+                break;
             }
-        } else {
-            startAndEnd[0] = 0;
-            startAndEnd[1] = verCount-1;
         }
-        return startAndEnd;
-    }
-
-    private float[] calTATraditional(float[] AOP,int[] size,int verCount) {
-        float[] acd = new float[verCount*2];//储存text area左右界
-        for (int j = 0;j<verCount;j++) {
-            acd[j*2] = size[0];//左边找最小值
-            acd[j*2+1] = 0;//右边找最大值
-        }
-        int length = AOP.length/2;
-        for (int i = 0;i<length;i++) {
-            int a = (int) AOP[i*2+1]*20/size[1];//--->/(size[1]/10)
-            a = a>=verCount? verCount: a;
-            acd[a*2] = Math.min(AOP[i*2]-150,acd[a*2]);
-            acd[a*2+1] = Math.max(AOP[i*2]+150,acd[a*2+1]);
-        }
-        return acd;
+        return es;
     }
 
     private String[] getDirs(float[] path,int[] size) {
@@ -290,18 +296,18 @@ class DataLoader implements Callable<Bundle> {
         }
     }
 
-    private int[] calBelonging(float[] ta,int verCount,int[] size) {
+    private int[] calBelong(float[] ta,int verCount,int[] size) {
         int[] belonging = new int[20];
         for (int i = 0;i<verCount;i++) {
             if (ta[i*2] == size[0] && ta[i*2+1] == 0) {
                 belonging[i] = 0;
             } else {
                 boolean leftAvailable = false;
-                if (ta[i*2]>size[0]/8) {
+                if (ta[i*2]>size[0]*2/5) {
                     belonging[i] = 1;
                     leftAvailable = true;
                 }//左边可用
-                if (size[0]-ta[i*2+1]>size[0]/8) {
+                if (size[0]-ta[i*2+1]>size[0]*2/5) {
                     belonging[i] = leftAvailable? 3: 2;
                 }
             }
@@ -323,44 +329,25 @@ class DataLoader implements Callable<Bundle> {
                 break;
             }
         }
-        L.i("belonging 2b return",L.a(belonging));
         return belonging;
     }
 
-    private boolean calLeftRight(int[] belonging) {
-
-        int oneCounter = 0, twoCounter = 0;
-        for (int temp : belonging) {
-            if (temp == 1) oneCounter++;
-            if (temp == 2) twoCounter++;
-        }
-        return oneCounter>twoCounter;
-    }
-
-    private boolean calLOR(float[] ta,int[] size,int[] belonging) {
-        int spaLef = 0, spaRig = 0;
-        for (int i = 0;i<ta.length/2;i++) {
-            //只有当一个ta的belonging是其专属或者3时才将它的长度计算在内
-            if (belonging[i] == 1 || belonging[i] == 3) spaLef += ta[i*2];
-            if (belonging[i] == 2 || belonging[i] == 3) spaRig += size[0]-ta[i*2+1];
-        }
-        return spaLef>spaRig;
-    }
-
-    private boolean calAnotherKind(AREA area){
-        switch (area){
-        case THREE:case FOUR:case SEVEN:case EIGHT:
-            return true;
-        }
-        return false;
-    }
-
-    private boolean calKind(AREA area) {
+    private boolean calLOR(AREA area) {
+        Tool.i("calLOR para",area);
         switch (area) {
-        case ONE: case FOUR: case SIX: case SEVEN:
-            return false;
-        default:
+        case THREE: case FOUR: case SEVEN: case EIGHT:
             return true;
+        default:
+            return false;
+        }
+    }
+
+    private boolean calTimeZone(AREA area) {
+        switch (area) {
+        case TWO: case THREE: case FIVE: case EIGHT:
+            return true;
+        default:
+            return false;
         }
     }
 
@@ -370,10 +357,6 @@ class DataLoader implements Callable<Bundle> {
         newCord[0] = cord[0] == 0? size[0]: cord[0] == size[0]? 0: cord[0];
         newCord[1] = cord[1] == 0? size[1]: cord[1] == size[1]? 0: cord[1];
         return new Cord(newCord,size);
-    }
-
-    private static boolean XOR(boolean a,boolean b) {
-        return (a && b) || (!a && !b);
     }
 
     private int howManyDays(int year,int month) {
@@ -433,8 +416,8 @@ class DataLoader implements Callable<Bundle> {
                     oom = x == 0 || y == 0;
             for (AREA temp : AREA.values()) {
                 //比对出新起点在哪个AREA
-                if (XOR(temp.getQoh(),qoh) && XOR(temp.getWoh(),woh)
-                        && XOR(temp.getOom(),oom)) {
+                if (same(temp.getQoh(),qoh) && same(temp.getWoh(),woh)
+                        && same(temp.getOom(),oom)) {
                     this.area = temp;
                 }
             }
@@ -509,6 +492,10 @@ class DataLoader implements Callable<Bundle> {
         public boolean getOom() {
             return oom;
         }
+    }
+
+    private static void i(String key,String value) {
+        Tool.i(tag,key,value);
     }
 
 }

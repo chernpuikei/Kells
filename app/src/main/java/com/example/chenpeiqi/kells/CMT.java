@@ -29,11 +29,11 @@ class CMT implements Callable<Bundle> {
         Bundle bundle = new Bundle();
         Socket socket;
         try {
-//        socket = new Socket("192.168.1.110",20000);
-//        socket = new Socket("192.168.43.182",20000);
+//            socket = new Socket("192.168.1.110",20000);
+//            socket = new Socket("192.168.43.182",20000);
             socket = new Socket("10.0.3.2",20000);
 
-            bundle = request(socket);//genymotion
+            bundle = request(socket);
         } catch(Exception e) {
             e.printStackTrace();
         }
@@ -101,7 +101,7 @@ class CMT implements Callable<Bundle> {
         String rsp = rJOJ.getString("respondType"),
                 rsr = rJOJ.has("result")? rJOJ.getString("result"): "null";
         if (temp != null) {
-            Log.i(tag,"<——receiving JSON:"+rsp+":"+rsr);
+            Log.i(tag,"<——receiving JSON:"+rJOJ);
             JSONObject resJS = new JSONObject(temp);
             String respondType = resJS.getString("respondType");
             bundle.putString("respondType",respondType);
@@ -112,6 +112,8 @@ class CMT implements Callable<Bundle> {
                 break;
             case "requestContent":
                 boolean con_existed = resJS.getBoolean("result");
+                int year = resJS.getInt("year"),month = resJS.getInt("month");
+                bundle.putInt("year",year);bundle.putInt("month",month);
                 bundle.putBoolean("result",con_existed);
                 if (con_existed) {
                     String result = resJS.getString("content");
@@ -147,6 +149,10 @@ class CMT implements Callable<Bundle> {
             }
         }
         return bundle;
+    }
+
+    private static void i(String key,String value) {
+        Tool.i(tag,key,value);
     }
 
 }

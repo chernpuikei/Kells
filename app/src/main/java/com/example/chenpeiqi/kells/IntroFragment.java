@@ -11,7 +11,7 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 
 /**
- * Created by chenpeiqi on 2016/12/15.
+ * Created on 2016/12/15.
  */
 
 public class IntroFragment extends Fragment {

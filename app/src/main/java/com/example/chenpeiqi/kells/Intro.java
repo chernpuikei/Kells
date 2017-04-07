@@ -11,7 +11,7 @@ import android.util.Log;
 import android.view.View;
 
 /**
- * Created by chenpeiqi on 2016/12/15.
+ * Created on 2016/12/15.
  */
 public class Intro extends FragmentActivity {
 

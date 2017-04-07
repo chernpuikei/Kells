@@ -20,6 +20,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static com.example.chenpeiqi.kells.Tool.i;
+
 public class Kells extends FragmentActivity {
 
     private static final int mp = Context.MODE_PRIVATE;
@@ -32,8 +34,8 @@ public class Kells extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-//        clearDB();
-//        L.f("**************Activity created**************");
+        clearDB(false);
+        i("start","*************\n***restart***\n*************");
         setContentView(new Pangur(this));
         myHandler = new MyHandler(new WeakReference<>(this));
     }
@@ -76,15 +78,16 @@ public class Kells extends FragmentActivity {
         }
     }
 
-    class Pangur extends SurfaceView implements SurfaceHolder.Callback,
-            View.OnTouchListener {
+    class Pangur extends SurfaceView
+            implements SurfaceHolder.Callback, View.OnTouchListener {
 
         private Context context;
         private Bitmap bitmap;
-        private float[] posTan, textArea, la, path, ends = new float[2];
+        private float[] posTan, textArea, la, path, ends = new float[2],pt;
         private String[] dirs;
-        private int[] date, belonging, conStaEnd, wlcStaEnd;
-        private boolean lor;
+        private int[] date, areaBelong, staEnd;
+        private boolean lor,timeZone;
+        int year,month,verCount;
         private GestureDetector gestureDetector;
 
         Pangur(Context context) {
@@ -188,18 +191,21 @@ public class Kells extends FragmentActivity {
                 bundle.putInt("pi",pi);
                 bundle.putString("requestType","requestContent");
                 ExecutorService es = Executors.newSingleThreadExecutor();
-                Bundle cb = es.submit(new DataLoader(context,bundle)).get();
-                cb.putFloatArray("posTan",posTan);
-                cb.putString("operation","TX");
-                cb.putBoolean("lor",lor);
-                cb.putIntArray("belonging",belonging);
-                cb.putFloatArray("ta",textArea);
-                cb.putIntArray("conStaEnd",conStaEnd);
-                cb.putFloatArray("la",la);
-                cb.putIntArray("wlcStaEnd",wlcStaEnd);
+                Bundle content = es.submit(new DataLoader(context,bundle)).get();
+                content.putFloatArray("posTan",posTan);
+                content.putFloatArray("path",path);
+                content.putString("operation","TX");
+                content.putBoolean("lor",lor);
+                content.putIntArray("areaBelong",areaBelong);
+                content.putFloatArray("pt",pt);
+                content.putInt("year",year);content.putInt("month",month);
+                content.putBoolean("timeZone",timeZone);
+                content.putFloatArray("ta",textArea);
+                content.putIntArray("staEnd",staEnd);
+                content.putInt("verCount",verCount);
                 es.shutdown();
-                if (cb.getBoolean("result")) {
-                    new Thread(new Draw(Kells.this,holder,cb)).start();
+                if (content.getBoolean("result")) {
+                    new Thread(new Draw(Kells.this,holder,content)).start();
                 } else {
                     Intent intent = new Intent(Kells.this,Diary.class);
                     intent.putExtra("si",si); intent.putExtra("pi",0);
@@ -272,8 +278,7 @@ public class Kells extends FragmentActivity {
         private void loadCurrentCanvas() throws Exception {
             SharedPreferences sp = context.getSharedPreferences("status",mp);
             String email = sp.getString("email","aaa");
-            int si = sp.getInt("si",0),
-                    width = sp.getInt("width",0),
+            int si = sp.getInt("si",0), width = sp.getInt("width",0),
                     height = sp.getInt("height",0);
             ExecutorService es = Executors.newSingleThreadExecutor();
             Bundle toDataLoader = new Bundle();
@@ -294,19 +299,23 @@ public class Kells extends FragmentActivity {
             this.path = currentCanvas.getFloatArray("path");
             this.ends = new float[]{path[4],path[5]};
             this.date = currentCanvas.getIntArray("date");
-            this.belonging = currentCanvas.getIntArray("belonging");
+            this.areaBelong = currentCanvas.getIntArray("areaBelong");
             this.lor = currentCanvas.getBoolean("lor");
-            this.conStaEnd = currentCanvas.getIntArray("conStaEnd");
-            this.wlcStaEnd = currentCanvas.getIntArray("wlcStaEnd");
+            this.staEnd = currentCanvas.getIntArray("staEnd");
+            this.pt = currentCanvas.getFloatArray("pt");
+            this.year = currentCanvas.getInt("year");
+            this.month = currentCanvas.getInt("month");
+            this.verCount = currentCanvas.getInt("verCount");
+            this.timeZone = currentCanvas.getBoolean("timeZone");
         }
     }
 
-    private void clearDB() {
-        Log.i(tag,"clearing DB");
-        ExecutorService es = Executors.newSingleThreadExecutor();
-        Bundle bundle = new Bundle();
-        bundle.putString("requestType","clearDB");
-        es.submit(new CMT(bundle));
+    private void clearDB(boolean toTeOrNot) {
+        if (toTeOrNot){
+            ExecutorService es = Executors.newSingleThreadExecutor();
+            Bundle bundle = new Bundle();
+            bundle.putString("requestType","clearDB");
+            es.submit(new CMT(bundle));
+        }
     }
-
 }
