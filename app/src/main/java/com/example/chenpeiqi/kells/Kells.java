@@ -20,7 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static com.example.chenpeiqi.kells.Tool.i;
+import static com.example.chenpeiqi.kells.Tool.array;
 
 public class Kells extends FragmentActivity {
 
@@ -34,10 +34,10 @@ public class Kells extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        clearDB(false);
-        i("start","*************\n***restart***\n*************");
-        setContentView(new Pangur(this));
+        clearDB(true);
+        Log.i("start","*************\n*************\n*************");
         myHandler = new MyHandler(new WeakReference<>(this));
+        setContentView(new Pangur(this));
     }
 
     private static class MyHandler extends Handler {
@@ -83,10 +83,11 @@ public class Kells extends FragmentActivity {
 
         private Context context;
         private Bitmap bitmap;
-        private float[] posTan, textArea, la, path, ends = new float[2],pt;
+        private float[] posTan, textArea, la, path, ends = new float[2],pt,
+                areaZero,areaOne,ori,cps;
         private String[] dirs;
-        private int[] date, areaBelong, staEnd;
-        private boolean lor,timeZone;
+        private int[] date, areaBelong, es,cpArea;
+        private boolean lor,timeZone,tob;
         int year,month,verCount;
         private GestureDetector gestureDetector;
 
@@ -191,21 +192,28 @@ public class Kells extends FragmentActivity {
                 bundle.putInt("pi",pi);
                 bundle.putString("requestType","requestContent");
                 ExecutorService es = Executors.newSingleThreadExecutor();
-                Bundle content = es.submit(new DataLoader(context,bundle)).get();
-                content.putFloatArray("posTan",posTan);
-                content.putFloatArray("path",path);
-                content.putString("operation","TX");
-                content.putBoolean("lor",lor);
-                content.putIntArray("areaBelong",areaBelong);
-                content.putFloatArray("pt",pt);
-                content.putInt("year",year);content.putInt("month",month);
-                content.putBoolean("timeZone",timeZone);
-                content.putFloatArray("ta",textArea);
-                content.putIntArray("staEnd",staEnd);
-                content.putInt("verCount",verCount);
+                Bundle drawCon = es.submit(new DataLoader(context,bundle)).get();
+                drawCon.putFloatArray("posTan",posTan);
+                drawCon.putFloatArray("path",path);
+                drawCon.putString("operation","TX");
+                drawCon.putBoolean("lor",lor);
+                drawCon.putIntArray("areaBelong",areaBelong);
+                drawCon.putFloatArray("pt",pt);
+                drawCon.putInt("year",year);drawCon.putInt("month",month);
+                drawCon.putBoolean("timeZone",timeZone);
+                drawCon.putFloatArray("ta",textArea);
+                drawCon.putIntArray("es",this.es);
+                drawCon.putInt("verCount",verCount);
+                drawCon.putIntArray("cpArea",cpArea);
+                drawCon.putFloatArray("areaZero",areaZero);
+                array("areaZero",areaZero);array("areaOne",areaOne);
+                drawCon.putFloatArray("areaOne",areaOne);
+                drawCon.putFloatArray("ori",ori);
+                drawCon.putFloatArray("cps",cps);
+                drawCon.putBoolean("tob",tob);
                 es.shutdown();
-                if (content.getBoolean("result")) {
-                    new Thread(new Draw(Kells.this,holder,content)).start();
+                if (drawCon.getBoolean("result")) {
+                    new Thread(new Draw(Kells.this,holder,drawCon)).start();
                 } else {
                     Intent intent = new Intent(Kells.this,Diary.class);
                     intent.putExtra("si",si); intent.putExtra("pi",0);
@@ -301,12 +309,18 @@ public class Kells extends FragmentActivity {
             this.date = currentCanvas.getIntArray("date");
             this.areaBelong = currentCanvas.getIntArray("areaBelong");
             this.lor = currentCanvas.getBoolean("lor");
-            this.staEnd = currentCanvas.getIntArray("staEnd");
+            this.es = currentCanvas.getIntArray("es");
             this.pt = currentCanvas.getFloatArray("pt");
             this.year = currentCanvas.getInt("year");
             this.month = currentCanvas.getInt("month");
             this.verCount = currentCanvas.getInt("verCount");
             this.timeZone = currentCanvas.getBoolean("timeZone");
+            this.cpArea = currentCanvas.getIntArray("cpArea");
+            this.areaZero = currentCanvas.getFloatArray("areaZero");
+            this.areaOne = currentCanvas.getFloatArray("areaOne");
+            this.ori = currentCanvas.getFloatArray("ori");
+            this.cps = currentCanvas.getFloatArray("cps");
+            this.tob = currentCanvas.getBoolean("tob");
         }
     }
 
