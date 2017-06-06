@@ -29,10 +29,9 @@ class CMT implements Callable<Bundle> {
         Bundle bundle = new Bundle();
         Socket socket;
         try {
+            socket = new Socket("10.0.3.2",2000);
 //            socket = new Socket("192.168.1.110",20000);
 //            socket = new Socket("192.168.43.182",20000);
-            socket = new Socket("10.0.3.2",20000);
-
             bundle = request(socket);
         } catch(Exception e) {
             e.printStackTrace();
@@ -69,8 +68,8 @@ class CMT implements Callable<Bundle> {
             for (float fp_item : bundle.getFloatArray("posTan")) {
                 ja_fp.put(fp_item);
             }
-            requestJson.put("si",bundle.getInt("si")).put("path",ja_path)
-                    .put("posTan",ja_fp);
+            requestJson.put("si",bundle.getInt("si"))
+                    .put("path",ja_path).put("posTan",ja_fp);
             break;
         case "requestContent":
             requestJson.put("si",bundle.getInt("s_i")).put("pi",bundle.getInt("pi"));

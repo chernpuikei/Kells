@@ -13,12 +13,30 @@ class Tool {
     static void array(String header,float[] array) {
         String finalPrint = "+——————"+header+"——————\n";
         int counter = array.length/2;
-        for (int i=0;i<counter;i++){
+        for (int i = 0;i<counter;i++) {
             String currentLine = "|"+i+".(";
-            for(int j=0;j<2;j++){
-                currentLine+=array[i*2+j]+(j==1?")\n":",");
+            for (int j = 0;j<2;j++) {
+                currentLine += array[i*2+j]+(j==1? ")\n": ",");
             }
-            finalPrint+=currentLine;
+            finalPrint += currentLine;
+        }
+        String end = "+";
+        for (int i = 0;i<header.length()+12;i++) {
+            end += "—";
+        }
+        finalPrint += end;
+        Log.i(getDirectMethodName(),finalPrint);
+    }
+
+    static void array(String header,int[] array,int countPerGroup) {
+        String finalPrint = "+——————"+header+"——————\n";
+        int counter = array.length/countPerGroup;
+        for (int i = 0;i<counter;i++) {
+            String currentLine = "|"+i+".(";
+            for (int j = 0;j<countPerGroup;j++) {
+                currentLine += array[i*countPerGroup+j]+(j==1? ")\n": ",");
+            }
+            finalPrint += currentLine;
         }
         String end = "+";
         for (int i = 0;i<header.length()+12;i++) {
@@ -29,32 +47,18 @@ class Tool {
     }
 
     static void array(String header,int[] array) {
-        String finalPrint = "+——————"+header+"——————\n";
-        int counter = array.length/2;
-        for (int i=0;i<counter;i++){
-            String currentLine = "|"+i+".(";
-            for(int j=0;j<2;j++){
-                currentLine+=array[i*2+j]+(j==1?")\n":",");
-            }
-            finalPrint+=currentLine;
-        }
-        String end = "+";
-        for (int i = 0;i<header.length()+12;i++) {
-            end += "—";
-        }
-        finalPrint += end;
-        Log.i(getDirectMethodName(),finalPrint);
+        array(header,array,2);
     }
 
-    static void array(String tag,String header,float[] array){
+    static void array(String tag,String header,float[] array) {
         String finalPrint = "+——————"+header+"——————\n";
         int counter = array.length/2;
-        for (int i=0;i<counter;i++){
+        for (int i = 0;i<counter;i++) {
             String currentLine = "|"+i+".(";
-            for(int j=0;j<2;j++){
-                currentLine+=array[i*2+j]+(j==1?")\n":",");
+            for (int j = 0;j<2;j++) {
+                currentLine += array[i*2+j]+(j==1? ")\n": ",");
             }
-            finalPrint+=currentLine;
+            finalPrint += currentLine;
         }
         String end = "+";
         for (int i = 0;i<header.length()+12;i++) {
@@ -64,15 +68,15 @@ class Tool {
         Log.i(tag,finalPrint);
     }
 
-    static void array(String tag,String header,String[] array){
+    static void array(String tag,String header,String[] array) {
         String finalPrint = "+——————"+header+"——————\n";
         int counter = array.length/2;
-        for (int i=0;i<counter;i++){
+        for (int i = 0;i<counter;i++) {
             String currentLine = "|"+i+".(";
-            for(int j=0;j<2;j++){
-                currentLine+=array[i*2+j]+(j==1?")\n":",");
+            for (int j = 0;j<2;j++) {
+                currentLine += array[i*2+j]+(j==1? ")\n": ",");
             }
-            finalPrint+=currentLine;
+            finalPrint += currentLine;
         }
         String end = "+";
         for (int i = 0;i<header.length()+12;i++) {
@@ -82,48 +86,69 @@ class Tool {
         Log.i(tag,finalPrint);
     }
 
-    static void check(String key,Object value){
-        Log.i("check",key+":"+value);
-    }
-
-    static void array(String header,int[] array,int countPerGroup) {
-        int groupCount = array.length/countPerGroup;
-        String finalPrint = "+"+header+"+\n";
-        for (int i = 0;i<groupCount;i++) {
-            //一次循环就是一行
-            String currentLine = "|"+i+"(";
-            for (int j = 0;j<countPerGroup;j++) {
-                currentLine += array[i*groupCount+j]+(j==countPerGroup-1?")":",");
+    static void array(String tag,String header,int[] array) {
+        String finalPrint = "+——————"+header+"——————\n";
+        int counter = array.length/2;
+        for (int i = 0;i<counter;i++) {
+            String currentLine = "|"+i+".(";
+            for (int j = 0;j<2;j++) {
+                currentLine += array[i*2+j]+(j==1? ")\n": ",");
             }
-            finalPrint += currentLine+"\n";
+            finalPrint += currentLine;
         }
-        finalPrint += "+";
-        Log.i(getDirectMethodName(),finalPrint);
+        String end = "+";
+        for (int i = 0;i<header.length()+12;i++) {
+            end += "—";
+        }
+        finalPrint += end;
+        Log.i(tag,finalPrint);
     }
 
     static void array(String header,float[] array,int countPerGroup) {
         int groupCount = array.length/countPerGroup;
+        i("countPerGroup",countPerGroup);
+        i("array.length",array.length);
+        i("groupCount",groupCount);
         String finalPrint = "+"+header+"+\n";
-        i("check","group count calculated",groupCount);
         for (int i = 0;i<groupCount;i++) {
-            i("check","current i",i);
+            i("current i",i+"/"+groupCount);
             //一次循环就是一行
             String currentLine = "|"+i+"(";
             for (int j = 0;j<countPerGroup;j++) {
-                i("check","current j",j);
-                i("check","currently iterating",i*groupCount+j);
-                currentLine += array[i*groupCount+j]+(j==countPerGroup-1?")":",");
+                i("current j",j+"/"+countPerGroup);
+                i("i*groupCount+j",i*groupCount+j);
+                currentLine += array[i*countPerGroup+j]+(j==countPerGroup-1? ")": ",");
             }
             finalPrint += currentLine+"\n";
         }
         finalPrint += "+";
-        i("check","getDMN",getDirectMethodName());
         Log.i(getDirectMethodName(),finalPrint);
     }
 
+    static void array(String tag,String header,float[] array,int countPerGroup) {
+        int groupCount = array.length/countPerGroup;
+        i("countPerGroup",countPerGroup);
+        i("array.length",array.length);
+        i("groupCount",groupCount);
+        String finalPrint = "+"+header+"+\n";
+        for (int i = 0;i<groupCount;i++) {
+            i("current i",i+"/"+groupCount);
+            //一次循环就是一行
+            String currentLine = "|"+i+"(";
+            for (int j = 0;j<countPerGroup;j++) {
+                i("current j",j+"/"+countPerGroup);
+                i("i*groupCount+j",i*groupCount+j);
+                currentLine += array[i*countPerGroup+j]+(j==countPerGroup-1? ")": ",");
+            }
+            finalPrint += currentLine+"\n";
+        }
+        finalPrint += "+";
+        Log.i(tag,finalPrint);
+    }
+
     //key
-    static void i(String key) {
-        Log.i(getDirectMethodName(),key);
+    static void i(String message) {
+        Log.i(getDirectMethodName(),message);
     }
 
     //key,value
@@ -134,14 +159,6 @@ class Tool {
     //tag,key,value
     static void i(String tag,String key,Object value) {
         Log.i(tag,key+" : "+value);
-    }
-
-    static void d(String tag,Object value){
-        Log.i("Draw",tag+" : "+value);
-    }
-
-    static void l(String tag,Object value){
-        Log.i("DataLoader",tag+" : "+value);
     }
 
     static void start() {
@@ -186,6 +203,14 @@ class Tool {
 //        i("check","final inSampleSize",inSampleSize);
 //        i("check","width/height calculated",w/inSampleSize+"/"+h/inSampleSize);
         return inSampleSize;
+    }
+
+    static boolean sameHOV(float[] cor1,float[] cor2) {
+        return cor1[0]==cor2[0] || cor1[1]==cor2[1];
+    }
+
+    static boolean randomBoolean() {
+        return Math.random()>0.5;
     }
 
 }

@@ -6,6 +6,7 @@ import android.graphics.*;
 import android.os.Bundle;
 import android.view.SurfaceHolder;
 
+import static com.example.chenpeiqi.kells.DataLoader.arrayToActual;
 import static com.example.chenpeiqi.kells.Tool.*;
 
 /**
@@ -34,19 +35,61 @@ class Draw implements Runnable {
         Paint paint = new Paint();
         Bitmap footprint = sample(context.getResources(),R.drawable.fp,20,20);
         float[] pathSE = bundle.getFloatArray("path");
-        array("check","path@Draw",pathSE);
-        //cal delta*******
-        float whole = 0;
-        int fpCount = posTan.length/4;
-        for (int i = 0;i<fpCount;i++) {
-            float current_degree = (float) Math.toDegrees(Math.asin(posTan[3]));
-            whole += current_degree;
-        }
-        boolean a = whole>0, b = posTan[1]>height/2;
-        //********这之间的逻辑要移到DataLoader
-        float deltaT = (a && b) || ((!a) && (!b))? -90: 90;
+            //cal delta*******
+            float whole = 0;
+            int fpCount = posTan.length/4;
+            for (int i = 0;i<fpCount;i++) {
+                float current_degree = (float) Math.toDegrees(Math.asin(posTan[3]));
+                whole += current_degree;
+            }
+            boolean a = whole>0, b = posTan[1]>height/2;
+            float deltaT = (a && b) || ((!a) && (!b))? -90: 90;
         try {
             switch (bundle.getString("operation")) {
+            case "drawPath":
+                Path all = new Path();
+                Paint green = new Paint(); green.setColor(Color.GREEN);
+                Paint magenta = new Paint();magenta.setColor(Color.MAGENTA);
+                Paint cyan = new Paint();cyan.setColor(Color.CYAN);
+                Paint red = new Paint();red.setColor(Color.RED);
+                Paint lt_grey = new Paint();lt_grey.setColor(Color.LTGRAY);
+                Canvas check = holder.lockCanvas();
+                check.drawRGB(43,43,43);
+                check.drawLine(0,height/2,width,height/2,magenta);
+                check.drawLine(width/2,0,width/2,height,magenta);
+                for (int i = 0;i<pathSE.length/7;i++) {
+                    int deltaX = 0, deltaY = 0;
+                    switch ((int) pathSE[i*7+6]) {
+                    case 1:
+                        deltaY = height/2; break;
+                    case 2:
+                        deltaX = width/2; deltaY = height/2; break;
+                    case 3:
+                        deltaX = width/2; break;
+                    }
+                    check.drawCircle(pathSE[i*7]+deltaX,pathSE[i*7+1]+deltaY,10,green);
+                    check.drawCircle(pathSE[i*7+4]+deltaX,pathSE[i*7+5]+deltaY,10,green);
+                    check.drawCircle(pathSE[i*7+2]+deltaX,pathSE[i*7+3]+deltaY,10,red);
+                    array("xxx","pathSE",pathSE,7);
+                    //取相邻两个quadrant，找出它们是在水平方向上相等还是在垂直方向上相等
+                    //get the common point,
+                    // select the other orientation of the common direction
+                    check.drawLine(pathSE[i*7]+deltaX,pathSE[i*7+1]+deltaY,pathSE[i*7+4]+deltaX,pathSE[i*7+5]+deltaY,cyan);
+                    Path currentContour = new Path();
+                    currentContour.moveTo(pathSE[i*7]+deltaX,pathSE[i*7+1]+deltaY);
+                    currentContour.quadTo(pathSE[i*7+2]+deltaX,pathSE[i*7+3]+deltaY,pathSE[i*7+4]+deltaX,pathSE[i*7+5]+deltaY);
+                    all.addPath(currentContour);
+                }
+                check.drawPath(all,new Paint());
+                Path pp = arrayToActual(pathSE );
+                i("path length",new PathMeasure(pp,false).getLength());
+                check.drawPath(pp,new Paint());
+                float[] checkPosTan = bundle.getFloatArray("posTan");
+                for (int i=0;i<checkPosTan.length/4;i++){
+                    check.drawCircle(posTan[i*4],posTan[i*4+1],5,lt_grey);
+                }
+                holder.unlockCanvasAndPost(check);
+                break;
             case "FP":
                 int duration = 25*posTan.length/4+75;
                 for (int i = 0;i<duration;i += 10) { //iterator1
@@ -92,7 +135,7 @@ class Draw implements Runnable {
                 for (int i = 0;i<animatorLength;i += 10) {
                     //内循环,每次画一帧并提交
                     Canvas canvas = holder.lockCanvas();
-                    drawFrame(canvas,0,false,paint,deltaT,20);
+//                    drawFrame(canvas,0,false,paint,deltaT,20);
                     String date = "1001.10";
 //                    drawDate(canvas,ta,tz,lor,es,width,height,date,verCount);
                     drawTAPosTan(canvas,bundle.getFloatArray("pt"));
@@ -113,6 +156,7 @@ class Draw implements Runnable {
     }
 
     private void drawFrame(Canvas canvas,int i,boolean ad,Paint p,float dT,int dP) {
+        start();
         canvas.drawRGB(33,33,33);
         float[] posTan = bundle.getFloatArray("posTan");
         for (int j = 0;j<posTan.length/4;j++) {
@@ -147,7 +191,7 @@ class Draw implements Runnable {
         int textSize = 40; datePaint.setTextSize(textSize);
         //将textSize设定到能容纳的最大大小
         while (datePaint.breakText(date.toCharArray(),0,date.length(),areHor,null)
-                == date.length()) {
+                ==date.length()) {
             datePaint.setTextSize(++textSize);
         }
         canvas.drawText(date.toCharArray(),0,date.length(),corX,corY,datePaint);
@@ -173,7 +217,7 @@ class Draw implements Runnable {
                 float areLen = currentLOR? ta[curY*2]-curX: width-curX;//area剩余长度
                 tp.setAlpha(alpha);
                 //unbreakable
-                while (tp.breakText(word,0,word.length,areLen,ms) != word.length) {
+                while (tp.breakText(word,0,word.length,areLen,ms)!=word.length) {
                     //totally unbreakable
                     if (++curY>currentEnd && !same(lor,currentLOR)) {
                         return;
@@ -212,7 +256,7 @@ class Draw implements Runnable {
     }
 
     private void drawSelected(float[] area,Canvas canvas,boolean lor,boolean eos) {
-        i("which area?",eos?"end":"sta");
+        i("which area?",eos? "end": "sta");
         array("area",area);
         //取相邻两点，第一点的水平坐标移至相应的屏幕边界
         //这里还要在参数中标记出当前area处于屏幕左边还是右边
@@ -222,14 +266,14 @@ class Draw implements Runnable {
         Paint yellow = new Paint(); yellow.setColor(Color.YELLOW);
         Paint white = new Paint(); white.setColor(Color.WHITE);
         Paint paint = new Paint();
-        Paint cyan = new Paint();cyan.setColor(Color.CYAN);
+        Paint cyan = new Paint(); cyan.setColor(Color.CYAN);
         white.setTextSize(50);
         for (int i = 0;i<area.length/2;i++) {
             canvas.drawText(""+i,area[i*2],area[i*2+1],white);//画圆上的数字提示
             canvas.drawCircle(area[i*2],area[i*2+1],20,yellow);//画圆
             paint.setColor(rgb[counter++%4]); paint.setAlpha(20);
             float floatingX = flag? 0: width;
-            if (i<area.length/2-1){
+            if (i<area.length/2-1) {
                 canvas.drawRect(floatingX,area[i*2+1],area[(i+1)*2],area[(i+1)*2+1],paint);
             }
             canvas.drawCircle(floatingX,area[i*2+1],20,cyan);
@@ -304,7 +348,7 @@ class Draw implements Runnable {
         paint.setTextSize(50);
         int deltaA = 2;
         for (int a = 0;a<200 && a>-1;a += deltaA) {
-            if (a == 100) {
+            if (a==100) {
                 deltaA = -2;
             }
             paint.setAlpha(a);
@@ -330,7 +374,7 @@ class Draw implements Runnable {
             curMonDay = 31;
             break;
         case 2:
-            curMonDay = year%4 == 0? 29: 28;
+            curMonDay = year%4==0? 29: 28;
             break;
         }
         day++;

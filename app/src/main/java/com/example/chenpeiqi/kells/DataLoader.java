@@ -6,7 +6,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
 import android.os.Bundle;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -37,7 +36,7 @@ class DataLoader implements Callable<Bundle> {
         Bundle bundleFromServer = pullRequestPushResult();
         if (bundleFromServer.getString("respondType").equals("requestCanvas")) {
             if (bundleFromServer.getBoolean("result")) {
-                return finalEdit(bundleFromServer);
+//                return finalEdit(bundleFromServer);
             } else {
                 return firstEdit(bundleFromServer);
             }
@@ -51,94 +50,193 @@ class DataLoader implements Callable<Bundle> {
     }
 
     //requestCanvas从服务器获取结果为false时产生创建结果返回上层且同步至服务器
-    private Bundle firstEdit(Bundle bFromS) {
+    private Bundle firstEdit(Bundle bFromS) {//here to generate path
         Bundle output = new Bundle();
         String[] date = new Date().toString().split(" ");
         float[] ends = request.getFloatArray("ends");
-        Cord start = (ends[0] == 0 && ends[1] == 0)?
-                new Cord(Math.random()>0.5? AREA.ONE: AREA.TWO):
-                getNextStart(ends);//<---here come the problem
-        float[] path = createPath(start);
+        Cord start = new Cord();//chose a crush position
+        float[] path = generatePath(start);
+        float[] controls = getControls(path);
+        float[] wholePath = new float[path.length+controls.length];
+        for (int i = 0;i<path.length/5;i++) {
+            wholePath[i*7] = path[i*5];
+            wholePath[i*7+1] = path[i*5+1];
+            wholePath[i*7+2] = controls[i*2];
+            wholePath[i*7+3] = controls[i*2+1];
+            wholePath[i*7+4] = path[i*5+2];
+            wholePath[i*7+5] = path[i*5+3];
+            wholePath[i*7+6] = path[i*5+4];
+        }
 //        float[] path = generatePath(start);
-        output.putFloatArray("path",path);
-        float[] posTan = initPosTan(path,Integer.parseInt(date[5]),date[1]);
+        output.putFloatArray("path",wholePath);
+        array("wholePath",wholePath,7);
+        float[] posTan = initPosTan(wholePath,Integer.parseInt(date[5]),date[1]);
         output.putFloatArray("posTan",posTan);
+        array("posTan",posTan,4);
         synchronizeCanvas(output);
-        output = finalEdit(output);
+//        output = finalEdit(output);
         return output;
     }
 
-    private Bundle finalEdit(Bundle bFromS) {
-        float[] path = bFromS.getFloatArray("path");
-        float[] posTan = bFromS.getFloatArray("posTan");
-        float[] posTanForTA = new float[posTan.length*4];
-        int extraCordCounter = 0;
-        for (int i = 0;i<posTan.length/4;i++) {
-            float[] xs = new float[]{posTan[i*4]-pw/2,posTan[i*4]+pw/2},
-                    ys = new float[]{posTan[i*4+1]-pw/2,posTan[i*4+1]+pw/2};
-            for (float x : xs) {
-                for (float y : ys) {
-                    posTanForTA[extraCordCounter*4] = x;
-                    posTanForTA[extraCordCounter*4+1] = y;
-                    extraCordCounter++;
-
-                }
-            }
+    static float[] getControls(float[] fPath) {
+        //刚刚将generatePath生成部分转换成绝对坐标
+        //看看这里是也转换成绝对坐标还是换回去
+        float[] con = new float[fPath.length/5*2];
+        array("fPath",fPath,5);
+        //relations between quadrants
+        int quaCount = fPath.length/5;
+        i("quaCount",quaCount);
+        //quadrants x relation for
+        float[] allCon = new float[fPath.length/5*4],
+                rightCon = new float[fPath.length/5*2];
+        for (int i = 0;i<quaCount;i++) {
+            i("current i",i);
+            float[][] cons = new float[][]{new float[]{fPath[i*5],fPath[i*5+3]},
+                    new float[]{fPath[i*5+2],fPath[i*5+1]}};
+            float[] curCon;
+            boolean check;
+            curCon = (check = notOnAxis(cons[0],(int) fPath[i*5+4]))? cons[0]: cons[1];
+            i("check",check);
+            con[i*2] = curCon[0];
+            con[i*2+1] = curCon[1];
         }
-        float[] ta = calTA(posTanForTA,verCount);
-        String[] dirs = getDirs(path);
-        array("check","dirs",dirs);
-        int[] areaBelong = calBelong(ta,verCount);
-        Cord cord = new Cord(new float[]{path[0],path[1]});
-        boolean lor = calLOR(cord.getArea());
-        boolean timeZone = calTimeZone(cord.getArea());
-        Log.i("DataLoader","calLOR:"+lor);
-        int[] es = calEndStart(ta.length/2,areaBelong,lor);
-        float[] ori = calOri(ta,es,lor);
-        float[] cps = findCP(path,ori);
-        boolean tob = calTOB(path);
-        float[][] selected = splitRect(posTan,cps,path);//check
-        bFromS.putFloatArray("areaZero",selected[0]);
-        bFromS.putFloatArray("areaOne",selected[1]);
-        bFromS.putFloatArray("ta",ta);
-        bFromS.putFloatArray("path",path);
-        bFromS.putStringArray("dirs",dirs);
-        bFromS.putFloatArray("pt",posTanForTA);
-        bFromS.putIntArray("areaBelong",areaBelong);
-        bFromS.putFloatArray("ori",ori);
-        bFromS.putBoolean("tob",tob);
-        array("es",es,2);
-        bFromS.putIntArray("es",es);
-        bFromS.putFloatArray("cps",cps);
-        bFromS.putBoolean("timeZone",timeZone);
-        bFromS.putInt("verCount",verCount);
-        //lor就是content写在哪里的依据,但是同样写在左边/右边,类型不同,起止ta也会有所不同
-        bFromS.putBoolean("lor",lor);
-        return bFromS;
+        return con;
     }
+
+    /**
+     * 从传入的两个控制点中找出不在坐标轴上的那一个
+     */
+    static boolean notOnAxis(float[] cord,int quadrant) {
+        i("quadrant",quadrant);
+        array("cord",cord);
+        switch (quadrant) {
+        case 0: return cord[0]!=width/2 && cord[1]!=height/2;
+        case 1: return cord[0]!=width/2 && cord[1]!=0;
+        case 2: return cord[0]!=0 && cord[1]!=0;
+        case 3: return cord[0]!=0 && cord[1]!=height/2;
+        }
+        return false;
+    }
+
+    static boolean getHOVByEnd(float endX) {
+        return endX==0 || endX==width/2;
+    }
+
+    static Path arrayToActual(float[] pathArray) {
+        float[] dxy = getCurrentDelta((int) pathArray[6]);
+        float dx = dxy[0], dy = dxy[1];
+        Path path = new Path();
+        path.moveTo(pathArray[0]+dx,pathArray[1]+dy);
+        path.quadTo(pathArray[2]+dx,pathArray[3]+dy,pathArray[4]+dx,pathArray[5]+dy);
+        return path;
+    }
+
+    private static float[] getCurrentDelta(int quadrant) {
+        float[] deltas = new float[2];
+        switch (quadrant) {
+        case 0:
+        case 1:
+            deltas[0] = 0;
+            break;
+        default:
+            deltas[0] = width/2;
+            break;
+        }
+        switch (quadrant) {
+        case 0:
+        case 3:
+            deltas[1] = 0;
+            break;
+        default:
+            deltas[1] = height/2;
+            break;
+        }
+        return deltas;
+    }
+
+    private boolean htv(float[] subPath) {//Horizontal To Vertical
+        return !(Math.abs(subPath[2]-subPath[0])==width/2 ||
+                Math.abs(subPath[3]-subPath[1])==height/2);
+    }
+
+//    private Bundle finalEdit(Bundle bFromS) {
+//        float[] path = bFromS.getFloatArray("path");
+//        float[] posTan = bFromS.getFloatArray("posTan");
+//        float[] posTanForTA = new float[posTan.length*4];
+//        int extraCordCounter = 0;
+//        for (int i = 0;i<posTan.length/4;i++) {
+//            float[] xs = new float[]{posTan[i*4]-pw/2,posTan[i*4]+pw/2},
+//                    ys = new float[]{posTan[i*4+1]-pw/2,posTan[i*4+1]+pw/2};
+//            for (float x : xs) {
+//                for (float y : ys) {
+//                    posTanForTA[extraCordCounter*4] = x;
+//                    posTanForTA[extraCordCounter*4+1] = y;
+//                    extraCordCounter++;
+//
+//                }
+//            }
+//        }
+//        float[] ta = calTA(posTanForTA,verCount);
+//        String[] dirs = getDirs(path);
+//        int[] areaBelong = calBelong(ta,verCount);
+//        Cord cord = new Cord(new float[]{path[0],path[1]});
+//        boolean lor = calLOR(cord.getArea());
+//        Log.i("DataLoader","calLOR:"+lor);
+//        int[] es = calEndStart(ta.length/2,areaBelong,lor);
+//        float[] ori = calOri(ta,es,lor);
+//
+//        float[] cps = findCP(path,ori);
+//        boolean tob = calTOB(path);
+//        float[][] selected = splitRect(posTan,cps,path);//check
+//        bFromS.putFloatArray("areaZero",selected[0]);
+//        bFromS.putFloatArray("areaOne",selected[1]);
+//        bFromS.putFloatArray("ta",ta);
+//        bFromS.putFloatArray("path",path);
+//        bFromS.putStringArray("dirs",dirs);
+//        bFromS.putFloatArray("pt",posTanForTA);
+//        bFromS.putIntArray("areaBelong",areaBelong);
+//        bFromS.putFloatArray("ori",ori);
+//        bFromS.putBoolean("tob",tob);
+//        array("es",es,2);
+//        bFromS.putIntArray("es",es);
+//        bFromS.putFloatArray("cps",cps);
+//        bFromS.putInt("verCount",verCount);
+//        //lor就是content写在哪里的依据,但是同样写在左边/右边,类型不同,起止ta也会有所不同
+//        bFromS.putBoolean("lor",lor);
+//        return bFromS;
+//    }
 
     private float[][] splitRect(float[] posTan,float[] cps,float[] path) {
         start();
         float[][] result = new float[2][];
         for (int i = 0;i<2;i++) {
             result[i] = select(posTan,new float[]{cps[i*4],cps[i*4+1]},
-                    new float[]{cps[i*4+2],cps[i*4+3]},i == 0,path);
+                    new float[]{cps[i*4+2],cps[i*4+3]},i==0,path);
         }
         end();
         return result;
     }
 
     private float[] calOri(float[] ta,int[] es,boolean lor) {
+        array("ta",ta);
+        array("es",es);
+        i("lor",lor);
+        i("ta.length",ta.length);
         float ah = height/verCount;
-        float endX = ta[2*es[0]+(lor? 0: 1)], staX = ta[2*es[1]+(lor? 1: 0)],
+        i("check","es[1]",es[1]);
+        int endXCounter = 2*es[0]+(lor? 0: 1), staXCounter = 2*es[1]+(lor? 1: 0);
+        i("check","endXCounter/staXCounter",endXCounter+"/"+staXCounter);
+        float endX = ta[endXCounter], staX = ta[staXCounter],
                 endY = (es[0]+1)*ah, staY = es[1]*ah;
         return new float[]{endX,endY,staX,staY};
     }
 
     //每次只能选择一侧
-    private float[] select(float[] posTan,float[] ori,float[] des,boolean which,float[] path) {
+    private float[] select(
+            float[] posTan,float[] ori,float[] des,boolean which,float[] path) {
         i("starting to select>");
-        array("ori",ori); array("des",des);
+        array("ori",ori);
+        array("des",des);
         boolean hor = des[0]>ori[0], ver = des[1]>ori[1];//确定起终点关系
         ArrayList<float[]> firstSelect = new ArrayList<>();
         for (int i = 0;i<posTan.length/4;i++) {//迭代posTan,同关系者添加至chosen
@@ -160,20 +258,24 @@ class DataLoader implements Callable<Bundle> {
                 }
             }
         }
-        sorted.remove(0); sorted.remove(sorted.size()-1);
+        sorted.remove(0);
+        sorted.remove(sorted.size()-1);
         //对排序后的数组选出符合"水平越靠近,垂直越靠近"的点
         ArrayList<float[]> finalSelect = new ArrayList<>();
-        Paint blue = new Paint(); blue.setColor(Color.BLUE);
-        Paint number = new Paint(); number.setColor(Color.WHITE);
+        Paint blue = new Paint();
+        blue.setColor(Color.BLUE);
+        Paint number = new Paint();
+        number.setColor(Color.WHITE);
         number.setTextSize(50);
         //参数的ArrayList的排列方式
 //        int colorCounter = -1;
-        for (int i = hor? sorted.size()-1: 0;hor? i>-1: i<sorted.size();i += hor? -1: 1) {
+        int ss = sorted.size();
+        for (int i = hor? ss-1: 0;hor? i>-1: i<ss;i += hor? -1: 1) {
             //当前选点>/<所有迭代点就将当前点添加到result中
             float[] curCho = sorted.get(i);
             boolean notFailYet = true;
             int delta = hor? 1: -1;
-            for (int j = i+delta;(hor? j<sorted.size(): j>0) && notFailYet;j += delta) {
+            for (int j = i+delta;(hor? j<ss: j>0) && notFailYet;j += delta) {
                 if (ver? curCho[1]>sorted.get(j)[1]: curCho[1]<sorted.get(j)[1]) {
                     //评估过程，一票否决
                     notFailYet = false;
@@ -182,7 +284,8 @@ class DataLoader implements Callable<Bundle> {
             if (notFailYet) finalSelect.add(curCho);
         }
         float[] result = new float[(finalSelect.size()+1)*2];
-        result[result.length-2] = ori[0]; result[result.length-1] = ori[1];
+        result[result.length-2] = ori[0];
+        result[result.length-1] = ori[1];
         for (int i = 0;i<finalSelect.size();i++) {
             result[i*2] = finalSelect.get(i)[0];
             result[i*2+1] = finalSelect.get(i)[1];
@@ -204,7 +307,8 @@ class DataLoader implements Callable<Bundle> {
         return resorted;
     }
 
-    private float[] selectResorted(float[] sorted,int ah,float[] ori,boolean tob,boolean which) {
+    private float[] selectResorted(float[] sorted,int ah,float[] ori,
+            boolean tob,boolean which) {
         //先写入ArrayList,再根据ArrayList长度创建floatArray
         ArrayList<float[]> setForACheck = new ArrayList<>();
         float lastHeight = ori[1];
@@ -215,67 +319,81 @@ class DataLoader implements Callable<Bundle> {
             }
         }
         float[] returnResult = new float[(setForACheck.size()+1)*2];
-        returnResult[0] = ori[0]; returnResult[1] = ori[1];
+        returnResult[0] = ori[0];
+        returnResult[1] = ori[1];
         for (int i = 0;i<setForACheck.size();i++) {
             returnResult[(i+1)*2] = setForACheck.get(i)[0];
             returnResult[(i+1)*2+1] = setForACheck.get(i)[1];
         }
         array("before edit",returnResult);
-        i("tob",tob); i("which",which);
+        i("tob",tob);
+        i("which",which);
         if (!same(tob,which)) returnResult[returnResult.length-1] = which? height: 0;
         array("after edit",returnResult);
         return returnResult;
     }
 
-    private float[] createPath(Cord start) {
-        Cord end = new Cord(start.getArea().switchStatus());
-        float[] cp = new float[2];
-        float sx = start.getX(), sy = start.getY(), ex = end.getX(), ey = end.getY();
-        cp[0] = sx == 0 || ex == 0? width: 0;
-        cp[1] = sy == 0 || ey == 0? height: 0;
-        return new float[]
-                {start.getX(),start.getY(),cp[0],cp[1],end.getX(),end.getY()};
+    private float[] generatePath(Cord preEnd) {
+        //提前随机第三个quadrant的方向指示器以确定switch-newCord执行次数
+        int maxCounter = Math.random()>0.66? 4: 3;
+        float[] pathReturn = new float[(maxCounter+1)*2];
+        for (int i = 0;i<maxCounter;i++) {
+            i(i+1+"------------------------>");
+            Cord newSta = new Cord(preEnd);
+            boolean toCrush = i==maxCounter-1;
+            Cord curEnd = new Cord(newSta,toCrush);
+            float[] endXY = curEnd.getXY();
+            float[] deltas = calDeltaFromQuad(preEnd.getQua());
+            pathReturn[(i+1)*2] = endXY[0]+deltas[0];
+            pathReturn[(i+1)*2+1] = endXY[1]+deltas[1];
+            preEnd = curEnd;
+            i("<------------------------");
+        }
+        //got an float array that should be able to generate Path here
+        //返回的时候不返回控制点，控制点到时候根据起终点自行生成
+        //则path包含的子path数目为path.length/2
+        i("path length",pathReturn.length);
+        array("path generated",pathReturn,5);
+        return pathReturn;
     }
 
-    private float[] generatePath(Cord start) {
-        AREA areaSta = start.getArea(), areaEnd = areaSta.switchStatus();
+    String[] getProperLoc(Cord start,boolean crushOrNot) {
+        if (start.onEdge()) {//如果起点在屏幕边缘，起点所在quadrant就是path quadrant
+            int curQuad = start.calQuad();
+        } else {//否则取取起点以及起点的起点的中点用以计算quadrant
 
-        Cord end = new Cord(areaEnd);
-        //1.创建起终点。2.获取起终点象限。3.算出起终点余下象限。4.得到控制点。
-        int[] seQuad = new int[]{areaSta.getQuadrant(),areaEnd.getQuadrant()},
-                conQuad = new int[2];
-        int currentEdit = 0;
-        for (int i = 1;i<5;i++) {
-            boolean thisIsIt = true;
-            for (int j = 0;j<2;j++) {
-                if (i == seQuad[j]) {
-                    thisIsIt = false;
-                    break;
-                }
-            }
-            if (thisIsIt) conQuad[currentEdit++] = i;
         }
-        i("conQuad",conQuad[0]+"/"+conQuad[1]);
-        float[] consCord = new float[4];//用于储存生成的坐标
-        for (int i = 0;i<2;i++) {//i for iterating conQuad
-            //first horizontal,then vertical
-            switch (conQuad[i]) {
-            case 1: case 2:
-                consCord[i*2] = 0; break;
-            case 3: case 4:
-                consCord[i*2] = width; break;
-            }
-            //then vertical
-            switch (conQuad[i]) {
-            case 1: case 4:
-                consCord[i*2+1] = 0; break;
-            case 2: case 3:
-                consCord[i*2+1] = height; break;
+        String[] result = new String[2];
+        switch (curQua) {
+        case 0: case 1:
+            result[0] = crushOrNot? "l": "r"; break;
+        default://here for case 2,case 3
+            result[0] = crushOrNot? "r": "l";
+        }
+        switch (curQua) {
+        case 0: case 3:
+            result[1] = crushOrNot? "t": "b"; break;
+        default:
+            result[1] = crushOrNot? "b": "t";
+        }
+        return result;
+    }
+
+    boolean locSame(String[] locs) {
+        boolean[] hovs = new boolean[2];
+        for (int i = 0;i<locs.length;i++) {
+            switch (locs[i]) {
+            case "l":
+            case "r":
+                hovs[i] = true;
+                break;
+            case "t":
+            case "b":
+                hovs[i] = false;
+                break;
             }
         }
-        array("control",consCord);
-        return new float[]{start.getX(),start.getY(),consCord[0],consCord[1],
-                consCord[2],consCord[3],end.getX(),end.getY()};
+        return same(hovs[0],hovs[1]);
     }
 
     //同步至服务器
@@ -289,32 +407,74 @@ class DataLoader implements Callable<Bundle> {
     }
 
     private float[] initPosTan(float[] fPath,int year,String month) {
-        float[] posTan = new float[]{};
-        int totalDistance = 25;
-        Path path = new Path();
-        path.moveTo(fPath[0],fPath[1]);
-        path.quadTo(fPath[2],fPath[3],fPath[4],fPath[5]);
-//        path.cubicTo(fPath[2],fPath[3],fPath[4],fPath[5],fPath[6],fPath[7]);
-        array("check","path",fPath);
-        PathMeasure pathMeasure = new PathMeasure(path,false);
-        float length = pathMeasure.getLength();
-        int day_count = howManyDays(year,transMon(month));
-        float stepLength = length/day_count;
-        boolean sod = true;//第单数还是复数个脚印
-        float[] last = {-50,-50};
-        while (totalDistance<length) {
-            float[] pos_t = new float[2], tan_t = new float[2];
-            pathMeasure.getPosTan(totalDistance,pos_t,tan_t);
-//        int delta = (int) (150+(Math.random()-0.5)*100);
-            totalDistance += stepLength;
-            pos_t = trans(pos_t,tan_t,sod);
-            pos_t = randomizePosition(pos_t);//test for randomizing footprint position
-            last = pos_t;
-            sod = !sod;
-            float[] singleFP = merge(pos_t,tan_t);
-            posTan = merge(posTan,singleFP);
+        Path[] paths = getPaths(fPath);
+        float totalLength = 0;
+        float[] curQuadDis = new float[fPath.length/7];//each quad path's length
+        for (int i = 0;i<paths.length;i++) {//whole length
+            curQuadDis[i] = new PathMeasure(paths[i],false).getLength();
+            totalLength += curQuadDis[i];
+        }
+        int dayCount = howManyDays(year,transMon(month));
+        float stepLength = totalLength/dayCount;
+        i("path length",totalLength);
+        i("dayCount",dayCount);
+        i("stepLength",stepLength);
+        float[] posTan = new float[dayCount*4];
+        int curStep = 0;
+        boolean sod = true;
+        float steppedDis = 0;
+        for (int i = 0;i<paths.length;i++) {//try each of the quadrant
+            i("currentPath/all",i+"/"+paths.length);
+            i("current disTotals",curQuadDis[i]);
+            while (steppedDis<curQuadDis[i] && curStep<dayCount) {
+                i("steppedDis/currentTotal",steppedDis+"/"+curQuadDis[i]);
+                i("curStep/day_count",curStep+"/"+dayCount);
+                float[] pos_t = new float[2], tan_t = new float[2];
+                new PathMeasure(paths[i],false).getPosTan(steppedDis,pos_t,tan_t);
+                pos_t = trans(pos_t,tan_t,sod);
+                pos_t = randomizePosition(pos_t);
+                sod = !sod;
+                posTan[4*curStep] = pos_t[0];
+                posTan[4*curStep+1] = pos_t[1];
+                posTan[4*curStep+2] = tan_t[0];
+                posTan[4*curStep+3] = tan_t[1];
+                curStep++;
+                steppedDis += stepLength;
+            }
+            steppedDis -= curQuadDis[i];//将余下距离算入下一个quadrant的起点距离
         }
         return posTan;
+    }
+
+    private Path[] getPaths(float[] fPath) {
+        Path[] paths = new Path[fPath.length/7];
+        for (int i = 0;i<fPath.length/7;i++) {
+            Path currentContour = new Path();
+            float[] dxy = calDeltaFromQuad((int) fPath[i*7+6]);
+            float dx = dxy[0], dy = dxy[1];
+            currentContour.moveTo(fPath[i*7]+dx,fPath[i*7+1]+dy);
+            currentContour.quadTo(fPath[i*7+2]+dx,fPath[i*7+3]+dy,
+                    fPath[i*7+4]+dx,fPath[i*7+5]+dy);
+            paths[i] = currentContour;
+        }
+        return paths;
+    }
+
+    private float[] calDeltaFromQuad(int quadrant) {
+        int deltaX = 0, deltaY = 0;
+        switch (quadrant) {
+        case 1:
+            deltaY = height/2;
+            break;
+        case 2:
+            deltaX = width/2;
+            deltaY = height/2;
+            break;
+        case 3:
+            deltaX = width/2;
+            break;
+        }
+        return new float[]{deltaX,deltaY};
     }
 
     private float[] randomizePosition(float[] originalPosition) {
@@ -391,8 +551,12 @@ class DataLoader implements Callable<Bundle> {
     }
 
     private int[] calEndStart(int verCount,int[] belong,boolean lor) {
-        int[] es = new int[]{0,verCount};
+        array("belong@calEndStart",belong);
+        i("verCount",verCount);
+        i("lor",lor);
+        int[] es = new int[]{0,verCount-1};
         for (int i = 0;i<verCount;i++) {
+            i("current i",i);
             switch (belong[i]) {
             case 1://仅左边可用,如lor为true应将此时的i更新为es[0]的最大值,如false
                 if (lor) {
@@ -414,7 +578,7 @@ class DataLoader implements Callable<Bundle> {
                 break;
             }
         }
-        array("es",es);
+        i("end/start calculated",es[0]+"/"+es[1]);
         return es;
     }
 
@@ -424,18 +588,21 @@ class DataLoader implements Callable<Bundle> {
         float[] wp = new float[]{-1,-1}, hp = new float[]{-1,-1};
         for (int i = 0;i<2;i++) {
             //一点被确定为wp,则另一点必然为hp
-            if (check[i*2] == 0 || check[i*2] == width) {
+            if (check[i*2]==0 || check[i*2]==width) {
                 i("which is wp",i);
-                wp[0] = check[i*2]; wp[1] = check[i*2+1];
-                hp[0] = check[(1-i)*2]; hp[1] = check[(1-i)*2+1];
-                array("certain wp",wp); array("certain hp",hp);
+                wp[0] = check[i*2];
+                wp[1] = check[i*2+1];
+                hp[0] = check[(1-i)*2];
+                hp[1] = check[(1-i)*2+1];
+                array("certain wp",wp);
+                array("certain hp",hp);
                 break;
             }
         }
         //我要space_tob为true的时候为top
         //所以在top的时候要怎样判断才能让space_tob为true呢
         //==height
-        boolean space_tob = hp[1] == height;
+        boolean space_tob = hp[1]==height;
         i("space_tob",space_tob);
         //lor就是对space_lor,space_tob求same
         //无论如何,返回结果中ori的位置都是确定了的
@@ -449,41 +616,22 @@ class DataLoader implements Callable<Bundle> {
     private boolean calTOB(float[] path) {
         //端点在上面是true，在下面是false
         for (int i = 0;i<path.length/2;i++) {
-            if (path[i*2+1] == 0) {
+            if (path[i*2+1]==0) {
                 return true;
-            } else if (path[i*2+1] == height) {
+            } else if (path[i*2+1]==height) {
                 return false;
             }
         }
         return false;
     }
 
-    private String[] getDirs(float[] path) {
-        String[] dirs = new String[2];
-        dirs[0] = calDir(new Cord(new float[]{path[0],path[1]}).getArea());
-        dirs[1] = calDir(new Cord(new float[]{path[4],path[5]}).getArea());
-        return dirs;
-    }
-
-    private String calDir(AREA area) {
-        switch (area) {
-        case ONE: case EIGHT:
-            return "up";
-        case TWO: case THREE:
-            return "left";
-        case FOUR: case FIVE:
-            return "down";
-        case SIX: case SEVEN:
-            return "right";
-        default:
-            return "nah";
-        }
-    }
-
     private int[] calBelong(float[] ta,int verCount) {
-        int[] belonging = new int[20];
+        i("calBelong being called","check");
+        array("ta",ta);
+        int[] belonging = new int[verCount];
         for (int i = 0;i<verCount;i++) {
-            if (ta[i*2] == width && ta[i*2+1] == 0) {
+            i("first i loop",i);
+            if (ta[i*2]==width && ta[i*2+1]==0) {
                 belonging[i] = 0;
             } else {
                 boolean leftAvailable = false;
@@ -500,59 +648,44 @@ class DataLoader implements Callable<Bundle> {
             //2.right available
             //3.edited both available
         }
-
+        array("belonging after first loop",belonging,3);
         for (int i = 0;i<verCount;i++) {//从上到下
-            if (belonging[i] != 0) {//找出第一个不是全部放空
+            i("second",i);
+            if (belonging[i]!=0) {//找出第一个不是全部放空
                 for (int j = 0;j<i;j++) belonging[j] = belonging[i];
                 break;
             }
         }
+
         for (int i = verCount-1;i>-1;i--) {//将上面过程从下到上再来一次
-            if (belonging[i] != 0) {
-                for (int j = 19;j>i;j--) belonging[j] = belonging[i];
+            i("third",i);
+            if (belonging[i]!=0) {
+                for (int j = verCount-1;j>i;j--) belonging[j] = belonging[i];
                 break;
             }
         }
+        //下面log不出来？
+        array("belong 2b return",belonging);
         return belonging;
-    }
-
-    private boolean calLOR(AREA area) {
-        Tool.i("calLOR para",area);
-        switch (area) {
-        case THREE: case FOUR: case SEVEN: case EIGHT:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    private boolean calTimeZone(AREA area) {
-        switch (area) {
-        case TWO: case THREE: case FIVE: case EIGHT:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    private Cord getNextStart(float[] cord) {
-        i("check","getNextStart() being called","check");
-        array("check","getNextStart().para",cord);
-        //想要获得下一个屏幕的起点只需要知道当前屏幕的终点'
-        float[] newCord = new float[2];
-        newCord[0] = cord[0] == 0? width: cord[0] == width? 0: cord[0];
-        newCord[1] = cord[1] == 0? height: cord[1] == height? 0: cord[1];
-        return new Cord(newCord);
     }
 
     private int howManyDays(int year,int month) {
         switch (month) {
-        case 1: case 3: case 5: case 7: case 8: case 10: case 12:
+        case 1:
+        case 3:
+        case 5:
+        case 7:
+        case 8:
+        case 10:
+        case 12:
             return 31;
-        case 4: case 6: case 9: case 11:
+        case 4:
+        case 6:
+        case 9:
+        case 11:
             return 30;
         case 2:
-            if (year%4 == 0) {
+            if (year%4==0) {
                 return 29;
             } else {
                 return 28;
@@ -563,18 +696,10 @@ class DataLoader implements Callable<Bundle> {
 
     private static int transMon(String month) {
         switch (month) {
-        case "Jan": return 1;
-        case "Feb": return 2;
-        case "Mar": return 3;
-        case "Apr": return 4;
-        case "May": return 5;
-        case "Jun": return 6;
-        case "Jul": return 7;
-        case "Aug": return 8;
-        case "Sep": return 9;
-        case "Oct": return 10;
-        case "Nov": return 11;
-        case "Dec": return 12;
+        case "Jan": return 1; case "Feb": return 2; case "Mar": return 3;
+        case "Apr": return 4; case "May": return 5; case "Jun": return 6;
+        case "Jul": return 7; case "Aug": return 8; case "Sep": return 9;
+        case "Oct": return 10; case "Nov": return 11; case "Dec": return 12;
         default: return 0;
         }
     }
@@ -582,114 +707,236 @@ class DataLoader implements Callable<Bundle> {
     private class Cord {
 
         float x, y;
-        AREA area;
 
-        Cord(AREA area) {
-            this.area = area;
-            boolean woh = area.getWoh(), qoh = area.getQoh(), oom = area.getOom();
-            x = woh? oom? 0: width:
-                    (float) (Math.random()/4)*width+(qoh? width/4: width/2);
-            y = woh? (float) (Math.random()/4)*height+(qoh? height/4: height/2):
-                    oom? 0: height;
-        }
-
-        Cord(float[] cords) {
-            this.x = cords[0];
-            this.y = cords[1];
-            boolean qoh = (x != 0 && x != width && x<width/2) ||
-                    (y != 0 && y != height && y<height/2),
-                    woh = x == 0 || x == width, oom = x == 0 || y == 0;
-            for (AREA temp : AREA.values()) {
-                //比对出新起点在哪个AREA
-                if (same(temp.getQoh(),qoh) && same(temp.getWoh(),woh)
-                        && same(temp.getOom(),oom)) {
-                    this.area = temp;
+        /**
+         * 获取当前屏幕的起点
+         */
+        Cord(Cord previous) {
+            float px = previous.getX(), py = previous.getY();
+            if (px==0 && py==0) {
+                boolean hov = randomBoolean();
+                this.x = hov? randomBoolean()? 0: width: randomCord(width);
+                this.y = !hov? randomBoolean()? 0: height: randomCord(height);
+            } else {
+                boolean changeOnX = px==width || px==0;
+                if (changeOnX) {
+                    this.x = px==width? 0: width;
+                    this.y = py;
+                } else {
+                    this.x = px;
+                    this.y = py==height? 0: height;
                 }
             }
+        }
+
+        /**
+         * 在当前quadrant根据起点生成一个终点
+         *
+         * @param start   起点
+         * @param quad    在哪个象限生成终点
+         * @param toCrush 在该象限生成终点的方式
+         */
+        Cord(Cord start,boolean toCrush,int quad) {
+            //first select positive cord for 'toCrush'
+            String[] curCrushLoc = getProperLoc(start,toCrush);
 
         }
 
-        boolean bothZero() {
-            return x == 0 && y == 0;
+        float randomCord(float woh) {
+            return (float) (woh/8+Math.random()*woh/4+(randomBoolean()? 0: woh/2));
         }
 
-        AREA getArea() {
-            return this.area;
-        }
+        /**
+         * 判断当前点是否在屏幕边界
+         */
+        boolean onEdge() {return x==width || x==0 || y==height || y==0;}
 
-        float getX() {
-            return x;
-        }
-
-        float getY() {
-            return y;
-        }
-    }
-
-    private enum AREA {
-        ONE(true,false,true),
-        TWO(true,true,true),
-        THREE(false,true,true),
-        FOUR(true,false,false),
-        FIVE(false,false,false),
-        SIX(false,true,false),
-        SEVEN(true,true,false),
-        EIGHT(false,false,true);
-
-        private boolean qoh, woh, oom;
-
-        AREA(boolean qoh,boolean woh,boolean oom) {
-            this.qoh = qoh; this.woh = woh; this.oom = oom;
-        }
-
-        public AREA switchStatus() {
-            switch (this) {
-            case ONE:
-                return SIX;
-            case TWO:
-                return FIVE;
-            case THREE:
-                return EIGHT;
-            case FOUR:
-                return SEVEN;
-            case FIVE:
-                return TWO;
-            case SIX:
-                return ONE;
-            case SEVEN:
-                return FOUR;
-            case EIGHT:
-                return THREE;
+        int[] getSiblingQuad(Cord cord) {//这里的cord必然是坐标轴上的点
+            String loc = cord.getLocOnCor();
+            int[] result = new int[2];
+            switch (loc) {
+            case "t": case "l":
+                result[0] = 0; break;
             default:
-                return THREE;
+                result[0] = 2;
+            }
+            switch (loc) {
+            case "l": case "b":
+                result[1] = 1; break;
+            default:
+                result[1] = 3;
+            }
+            return result;
+        }
+
+        String getLocInQua(Cord cord,int quadrant) {
+            //确定坐标轴上的点相对于当前quad处在什么位置
+            String l_c = getLocOnCor();
+            switch (l_c) {
+            case "t":
+                return quadrant==0? "r": "l";
+            case "b":
+                return quadrant==1? "r": "l";
+            case "l":
+                return quadrant==0? "b": "t";
+            default:
+                return quadrant==3? "b": "t";
             }
         }
 
-        public boolean getWoh() {
-            return woh;
+        String getLocOnCor() {//确定在坐标轴上的点是那个
+            boolean hov = y==height/2;
+            return hov? x<width/2? "l": "r": y<height/2? "t": "b";
         }
 
-        public boolean getQoh() {
-            return qoh;
+        int calQuad() {
+            boolean hor = x<width/2;
+            return same(hor,y<height/2)? hor? 0: 2: hor? 1: 3;
         }
 
-        public boolean getOom() {
-            return oom;
-        }
+        float getX() { return this.x;}
 
-        public int getQuadrant() {//获取该AREA所处的坐标系
-            switch (this) {
-            case ONE: case TWO:
-                return 1;
-            case THREE: case FOUR:
-                return 2;
-            case FIVE: case SIX:
-                return 3;
-            case SEVEN: case EIGHT:
-                return 4;
-            default: return 0;
-            }
-        }
+        float getY() { return this.y;}
+
+//        //此处的构造方法用于产生当前quadrant的end Cord
+//        Cord(String location,int quad,boolean CON) {//
+//            i("check","quad",quad);
+//            i("check","location",location);
+//            i("check","CON",CON);
+//            //quad:array's first para
+//            //CON:chose the crush location or not,second para
+//            //location:self deleted when came to the third para
+//            this.quadrant = quad;//quadrant-check
+//            i("check","wot's wrong?",quad);
+//            String[] endLoc = cruRel[quad][CON? 0: 1];//??
+//            ArrayList<String> selectedLoc = new ArrayList<>();
+//            for (int i = 0;i<endLoc.length;i++) {
+//                if (!location.equals(endLoc[i])) {
+//                    selectedLoc.add(endLoc[i]);
+//                }
+//            }//now gets one end position or two
+//            if (selectedLoc.size()!=1) {
+//                selectedLoc.remove(Math.random()>0.5? 0: 1);
+//            }//now one left
+//            this.location = selectedLoc.get(0);//location check
+//            generateXY(quad);
+//        }
+
+//        Cord(Cord start,Cord end) {
+//            //这里的构造函数用于产生控制点
+//            String startLoc = start.getLoc(), endLoc = end.getLoc();
+//            String[] loc = new String[]{startLoc,endLoc};
+//            for (int i = 0;i<2;i++) {
+//                switch (loc[i]) {
+//                case "t":
+//                    this.y = height/2;
+//                    break;
+//                case "b":
+//                    this.y = 0;
+//                    break;
+//                case "l":
+//                    this.x = width/2;
+//                    break;
+//                case "r":
+//                    this.x = 0;
+//                    break;
+//                }
+//            }
+//            //控制点需要quadrant用于产生正确的偏移,不需要location
+//            this.quadrant = start.getQua();
+//        }
+
+//        private void generateXY(int currentQuad) {
+//            int hw = width/2, hh = height/2;
+//            float[] quadrantDelta = calDeltaFromQuad(currentQuad);
+//            float dx = quadrantDelta[0], dy = quadrantDelta[1];
+//            i("location in the quadrant",this.location);
+//            i("switch-case",this.location);
+//            double rc = -1;
+//            switch (this.location) {
+//            case "t":
+//                this.x = (float) (rc = Math.random()*0.5+0.25)*hw+dx;
+//                i("t.x",x);
+//                this.y = dy;
+//                break;
+//            case "b":
+//                this.x = (float) (rc = Math.random()*0.5+0.25)*hw+dx;
+//                i("b.x",x);
+//                this.y = hh+dy;
+//                break;
+//            case "l":
+//                this.x = dx;
+//                this.y = (float) (rc = Math.random()*0.5+0.25)*hh+dy;
+//                i("l.y",y);
+//                break;
+//            case "r":
+//                this.x = hw+dx;
+//                this.y = (float) (rc = Math.random()*0.5+0.25)*hh+dy;
+//                i("r.y",y);
+//                break;
+//            }//x,y check
+//            i("check",rc);
+//            i("cord generated",x+"/"+y);
+//        }
+
+//        void alter() {
+//            //因为previousEnd和currentSta都是表示的同一个点
+//            //且previousEnd在转换成currentSta后毫无利用价值
+//            //所以在从previousEnd得到currentSta的过程中不用构造函数
+//            // 而是直接对previousEnd的成员变量进行更改
+//            int hw = width/2, hh = height/2;//540,960 check
+//            float[] previousXY = this.getXY();
+//            float px = previousXY[0], py = previousXY[1];
+//            i("px&py",px+"/"+py);
+//            boolean hov = px==0 || px==hw;//标示出水平坐标发生变化还是垂直坐标发生变化
+//            if (hov) { //x,y-check
+//                this.x = px==0? hw: 0;
+//                this.y = py;
+//            } else {
+//                this.x = px;
+//                this.y = py==0? hh: 0;
+//            }
+//            this.quadrant = switchQuadrant();//quadrant-check
+//            this.location = switchLocation();//location-check
+//        }
+
+//        public int switchQuadrant() {
+//            int pq = this.getQua();
+//            float[] xy = this.getXY();
+//            //如果x为0/width/(width/2)则意味着将会产生横向移动
+//            boolean hov = xy[0]==0 || xy[0]==width || xy[0]==width/2;
+//            switch (pq) {
+//            case 0:
+//                return hov? 3: 1;
+//            case 1:
+//                return hov? 2: 0;
+//            case 2:
+//                return hov? 1: 3;
+//            case 3:
+//                return hov? 0: 2;
+//            }
+//            return 0;
+//        }
+//
+//        public String switchLocation() {
+//            String previousLocation = this.getLoc();
+//            String newLocation = "check";
+//            switch (previousLocation) {
+//            case "t":
+//                return "b";
+//            case "l":
+//                return "r";
+//            case "r":
+//                return "l";
+//            case "b":
+//                return "t";
+//            }
+//            return "error";
+//        }
+//
+//        public String getLoc() {
+//            return this.location;
+//        }
     }
 
 }

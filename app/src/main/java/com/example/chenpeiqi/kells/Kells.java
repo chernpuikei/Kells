@@ -71,8 +71,8 @@ public class Kells extends FragmentActivity {
         case 0:
             //同步服务器的过程放在diary中，这里只需要将所打content现实在屏幕上
             Bundle bundle = new Bundle();
-            bundle.putString("operation","TX");
-            bundle.putString("content",data.getStringExtra("content"));
+            bundle.putString("operation","FP");
+//            bundle.putString("content",data.getStringExtra("content"));
             new Thread(new Draw(Kells.this,holder,bundle)).start();
             break;
         }
@@ -171,8 +171,7 @@ public class Kells extends FragmentActivity {
                     firstCanvas.putString("operation","FP");
                     firstCanvas.putFloatArray("posTan",posTan);
                     firstCanvas.putFloatArray("path",path);
-//                    new Thread(new Draw(context,holder,firstCanvas)).start();
-                    requestContent(-1);
+                    new Thread(new Draw(context,holder,firstCanvas)).start();
 
                 } else {
                     Toast.makeText(context,"ur in trouble",Toast.LENGTH_SHORT).show();
@@ -206,7 +205,6 @@ public class Kells extends FragmentActivity {
                 drawCon.putInt("verCount",verCount);
                 drawCon.putIntArray("cpArea",cpArea);
                 drawCon.putFloatArray("areaZero",areaZero);
-                array("areaZero",areaZero);array("areaOne",areaOne);
                 drawCon.putFloatArray("areaOne",areaOne);
                 drawCon.putFloatArray("ori",ori);
                 drawCon.putFloatArray("cps",cps);
@@ -321,6 +319,7 @@ public class Kells extends FragmentActivity {
             this.ori = currentCanvas.getFloatArray("ori");
             this.cps = currentCanvas.getFloatArray("cps");
             this.tob = currentCanvas.getBoolean("tob");
+            array("current path",path,5);
         }
     }
 
