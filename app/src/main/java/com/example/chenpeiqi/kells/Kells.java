@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static com.example.chenpeiqi.kells.Tool.array;
+import static com.example.chenpeiqi.kells.Tool.i;
 
 public class Kells extends FragmentActivity {
 
@@ -83,12 +84,12 @@ public class Kells extends FragmentActivity {
 
         private Context context;
         private Bitmap bitmap;
-        private float[] posTan, textArea, la, path, ends = new float[2],pt,
-                areaZero,areaOne,ori,cps;
+        private float[] posTan, textArea, la, path, ends = new float[2], pt,
+                areaZero, areaOne, ori, cps;
         private String[] dirs;
-        private int[] date, areaBelong, es,cpArea;
-        private boolean lor,timeZone,tob;
-        int year,month,verCount;
+        private int[] date, areaBelong, es, cpArea;
+        private boolean lor, timeZone, tob;
+        int year, month, verCount;
         private GestureDetector gestureDetector;
 
         Pangur(Context context) {
@@ -124,8 +125,9 @@ public class Kells extends FragmentActivity {
                     Bundle bundle = new Bundle();
                     bundle.putFloatArray("posTan",posTan);
                     bundle.putFloatArray("path",path);
+                    bundle.putFloatArray("ta",textArea);
                     bundle.putFloatArray("last",new float[]{path[4],path[5]});
-                    bundle.putString("operation","FP");
+                    bundle.putString("operation","drawPath");
                     SharedPreferences sp = SP.getSP(context);
                     requestContent(-1);
 //                    new Thread(new Draw(Kells.this,holder,bundle)).start();
@@ -167,18 +169,24 @@ public class Kells extends FragmentActivity {
                 if (getIntent().getBooleanExtra("checkWidthHeight",false)
                         || checkWidthHeight(holder)) {
                     loadCurrentCanvas();
-                    Bundle firstCanvas = new Bundle();
-                    firstCanvas.putString("operation","FP");
-                    firstCanvas.putFloatArray("posTan",posTan);
-                    firstCanvas.putFloatArray("path",path);
-                    new Thread(new Draw(context,holder,firstCanvas)).start();
-
+                    requestContent(-1);
+//                    drawPathTest();
                 } else {
                     Toast.makeText(context,"ur in trouble",Toast.LENGTH_SHORT).show();
                 }
             } catch(Exception e) {
                 e.printStackTrace();
             }
+        }
+
+        private void drawPathTest() {
+            Bundle firstCanvas = new Bundle();
+            firstCanvas.putString("operation","drawPath");
+            firstCanvas.putFloatArray("posTan",posTan);
+            firstCanvas.putFloatArray("path",path);
+            firstCanvas.putFloatArray("ta",textArea);
+            array("613","textArea@firstCanvas",textArea,4);
+            new Thread(new Draw(context,holder,firstCanvas)).start();
         }
 
         private void requestContent(int pi) {
@@ -195,14 +203,14 @@ public class Kells extends FragmentActivity {
                 drawCon.putFloatArray("posTan",posTan);
                 drawCon.putFloatArray("path",path);
                 drawCon.putString("operation","TX");
-                drawCon.putBoolean("lor",lor);
-                drawCon.putIntArray("areaBelong",areaBelong);
                 drawCon.putFloatArray("pt",pt);
-                drawCon.putInt("year",year);drawCon.putInt("month",month);
-                drawCon.putBoolean("timeZone",timeZone);
+                drawCon.putInt("year",year);
+                drawCon.putInt("month",month);
                 drawCon.putFloatArray("ta",textArea);
+                array("drawTextFrame","ta put@requestContent",textArea,2);
                 drawCon.putIntArray("es",this.es);
                 drawCon.putInt("verCount",verCount);
+                i("verCount",verCount);
                 drawCon.putIntArray("cpArea",cpArea);
                 drawCon.putFloatArray("areaZero",areaZero);
                 drawCon.putFloatArray("areaOne",areaOne);
@@ -260,7 +268,7 @@ public class Kells extends FragmentActivity {
             for (int i = 0;i<length;i++) {
                 if (touchX>posTan[i*4]-a && touchX<posTan[i*4]+a &&
                         touchY>posTan[i*4+1]-a && touchY<posTan[i*4+1]+a
-                        && event.getAction() == MotionEvent.ACTION_UP) {
+                        && event.getAction()==MotionEvent.ACTION_UP) {
                     Log.i(tag,"##posTan being Touch");
                     requestContent(i);
                 }
@@ -298,17 +306,17 @@ public class Kells extends FragmentActivity {
             es.shutdown();
             Bundle currentCanvas = future.get();
             Log.i(tag,"current canvas load(ed):"+currentCanvas);
-            this.dirs = currentCanvas.getStringArray("dirs");
+            this.path = currentCanvas.getFloatArray("path");
             this.posTan = currentCanvas.getFloatArray("posTan");
+            this.pt = currentCanvas.getFloatArray("pt");
+            this.dirs = currentCanvas.getStringArray("dirs");
             this.textArea = currentCanvas.getFloatArray("ta");
             this.la = currentCanvas.getFloatArray("la");
-            this.path = currentCanvas.getFloatArray("path");
             this.ends = new float[]{path[4],path[5]};
             this.date = currentCanvas.getIntArray("date");
             this.areaBelong = currentCanvas.getIntArray("areaBelong");
             this.lor = currentCanvas.getBoolean("lor");
             this.es = currentCanvas.getIntArray("es");
-            this.pt = currentCanvas.getFloatArray("pt");
             this.year = currentCanvas.getInt("year");
             this.month = currentCanvas.getInt("month");
             this.verCount = currentCanvas.getInt("verCount");
@@ -319,12 +327,12 @@ public class Kells extends FragmentActivity {
             this.ori = currentCanvas.getFloatArray("ori");
             this.cps = currentCanvas.getFloatArray("cps");
             this.tob = currentCanvas.getBoolean("tob");
-            array("current path",path,5);
+            i("drawTextFrame","current canvas loaded");
         }
     }
 
     private void clearDB(boolean toTeOrNot) {
-        if (toTeOrNot){
+        if (toTeOrNot) {
             ExecutorService es = Executors.newSingleThreadExecutor();
             Bundle bundle = new Bundle();
             bundle.putString("requestType","clearDB");

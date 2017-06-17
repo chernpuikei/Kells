@@ -5,6 +5,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.util.Log;
 
+import java.util.ArrayList;
+
 /**
  * Created on 2017/3/12.
  */
@@ -29,6 +31,24 @@ class Tool {
     }
 
     static void array(String header,int[] array,int countPerGroup) {
+        String finalPrint = "+——————"+header+"——————\n";
+        int counter = array.length/countPerGroup;
+        for (int i = 0;i<counter;i++) {
+            String currentLine = "|"+i+".(";
+            for (int j = 0;j<countPerGroup;j++) {
+                currentLine += array[i*countPerGroup+j]+(j==1? ")\n": ",");
+            }
+            finalPrint += currentLine;
+        }
+        String end = "+";
+        for (int i = 0;i<header.length()+12;i++) {
+            end += "—";
+        }
+        finalPrint += end;
+        Log.i(getDirectMethodName(),finalPrint);
+    }
+
+    static void array(String header,String[] array,int countPerGroup) {
         String finalPrint = "+——————"+header+"——————\n";
         int counter = array.length/countPerGroup;
         for (int i = 0;i<counter;i++) {
@@ -106,39 +126,58 @@ class Tool {
 
     static void array(String header,float[] array,int countPerGroup) {
         int groupCount = array.length/countPerGroup;
-        i("countPerGroup",countPerGroup);
-        i("array.length",array.length);
-        i("groupCount",groupCount);
         String finalPrint = "+"+header+"+\n";
         for (int i = 0;i<groupCount;i++) {
-            i("current i",i+"/"+groupCount);
             //一次循环就是一行
-            String currentLine = "|"+i+"(";
+            String curLine = "|"+i+"(";
             for (int j = 0;j<countPerGroup;j++) {
-                i("current j",j+"/"+countPerGroup);
-                i("i*groupCount+j",i*groupCount+j);
-                currentLine += array[i*countPerGroup+j]+(j==countPerGroup-1? ")": ",");
+                curLine += array[i*countPerGroup+j]+(j==countPerGroup-1? ")": ",");
             }
-            finalPrint += currentLine+"\n";
+            finalPrint += curLine+"\n";
         }
         finalPrint += "+";
         Log.i(getDirectMethodName(),finalPrint);
     }
 
-    static void array(String tag,String header,float[] array,int countPerGroup) {
-        int groupCount = array.length/countPerGroup;
-        i("countPerGroup",countPerGroup);
-        i("array.length",array.length);
-        i("groupCount",groupCount);
+    static void arrayListX2(String description,ArrayList<ArrayList<float[]>> check) {
+        String result = "+"+description+"\n";
+        for (int i = 0;i<check.size();i++) {//每一个vc
+            result += "|"+i+":";
+            ArrayList<float[]> curLine = check.get(i);
+            for (int j = 0;j<curLine.size();j++) {//单个VC内的每一片
+                float[] curPiece = curLine.get(j);
+                for (int k = 0;k<curPiece.length;k++) {//x and y
+                    result += curPiece[k]+",";
+                }
+                result += "\n";//同一个vc可能会含有不同的piece
+            }
+            result += "\n";
+        }
+        Log.i(getDirectMethodName(),result);
+    }
+
+    static void arrayListX1(String description,ArrayList<float[]> al2bShown) {
+        String result = "+"+description+"\n";
+        for (int i = 0;i<al2bShown.size();i++) {
+            float[] curPiece = al2bShown.get(i);
+            result += "|"+i+":";
+            for (int j = 0;j<curPiece.length;j++) {
+                result += curPiece[j]+",";
+            }
+            result += "\n";
+        }
+        i("check","getDirect?",getDirectMethodName());
+        Log.i(getDirectMethodName(),result);
+    }
+
+    static void array(String tag,String header,float[] array,int countPG) {
+        int groupCount = array.length/countPG;
         String finalPrint = "+"+header+"+\n";
         for (int i = 0;i<groupCount;i++) {
-            i("current i",i+"/"+groupCount);
             //一次循环就是一行
             String currentLine = "|"+i+"(";
-            for (int j = 0;j<countPerGroup;j++) {
-                i("current j",j+"/"+countPerGroup);
-                i("i*groupCount+j",i*groupCount+j);
-                currentLine += array[i*countPerGroup+j]+(j==countPerGroup-1? ")": ",");
+            for (int j = 0;j<countPG;j++) {
+                currentLine += array[i*countPG+j]+(j==countPG-1? ")": ",");
             }
             finalPrint += currentLine+"\n";
         }
@@ -146,17 +185,18 @@ class Tool {
         Log.i(tag,finalPrint);
     }
 
-    //key
     static void i(String message) {
         Log.i(getDirectMethodName(),message);
     }
 
-    //key,value
     static void i(String key,Object value) {
         Log.i(getDirectMethodName(),key+" : "+value);
     }
 
-    //tag,key,value
+    static void i(String tag,String message) {
+        Log.i(tag,message);
+    }
+
     static void i(String tag,String key,Object value) {
         Log.i(tag,key+" : "+value);
     }

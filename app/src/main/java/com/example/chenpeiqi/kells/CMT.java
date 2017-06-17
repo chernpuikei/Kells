@@ -12,6 +12,8 @@ import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.util.concurrent.Callable;
 
+import static com.example.chenpeiqi.kells.Tool.array;
+
 /**
  * Created on 16/3/25.
  */
@@ -29,9 +31,9 @@ class CMT implements Callable<Bundle> {
         Bundle bundle = new Bundle();
         Socket socket;
         try {
-            socket = new Socket("10.0.3.2",2000);
 //            socket = new Socket("192.168.1.110",20000);
 //            socket = new Socket("192.168.43.182",20000);
+            socket = new Socket("10.0.3.2",2000);
             bundle = request(socket);
         } catch(Exception e) {
             e.printStackTrace();
@@ -99,7 +101,7 @@ class CMT implements Callable<Bundle> {
         JSONObject rJOJ = new JSONObject(temp);
         String rsp = rJOJ.getString("respondType"),
                 rsr = rJOJ.has("result")? rJOJ.getString("result"): "null";
-        if (temp != null) {
+        if (temp!=null) {
             Log.i(tag,"<——receiving JSON:"+rJOJ);
             JSONObject resJS = new JSONObject(temp);
             String respondType = resJS.getString("respondType");
@@ -111,8 +113,8 @@ class CMT implements Callable<Bundle> {
                 break;
             case "requestContent":
                 boolean con_existed = resJS.getBoolean("result");
-                int year = resJS.getInt("year"),month = resJS.getInt("month");
-                bundle.putInt("year",year);bundle.putInt("month",month);
+                int year = resJS.getInt("year"), month = resJS.getInt("month");
+                bundle.putInt("year",year); bundle.putInt("month",month);
                 bundle.putBoolean("result",con_existed);
                 if (con_existed) {
                     String result = resJS.getString("content");
@@ -128,11 +130,15 @@ class CMT implements Callable<Bundle> {
                 if (existed) {
                     //path
                     JSONArray jaPath = resJS.getJSONArray("path");
-                    float[] arPath = new float[6];
-                    for (int i = 0;i<6;i++) {
+                    int jal = jaPath.length();
+                    int len = jaPath.getDouble(jal-2)==0 &&
+                            jaPath.getDouble(jal-1)==0? jal-2: jal;
+                    float[] arPath = new float[len];
+                    for (int i = 0;i<len;i++) {
                         arPath[i] = (float) jaPath.getDouble(i);
                     }
                     bundle.putFloatArray("path",arPath);
+                    array("path",arPath,2);
                     //posTan
                     JSONArray jaPosTan = resJS.getJSONArray("fps");
                     float[] arPosTan = new float[jaPosTan.length()];
@@ -149,9 +155,4 @@ class CMT implements Callable<Bundle> {
         }
         return bundle;
     }
-
-    private static void i(String key,String value) {
-        Tool.i(tag,key,value);
-    }
-
 }
