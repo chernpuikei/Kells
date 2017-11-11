@@ -19,6 +19,8 @@ import java.lang.ref.WeakReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static com.example.chenpeiqi.kells.Tool.i;
+
 public class Diary extends AppCompatActivity implements AMapLocationListener {
 
     private static EditText editText;
@@ -29,6 +31,7 @@ public class Diary extends AppCompatActivity implements AMapLocationListener {
     private AMapLocationClient locationClient;
     private AMapLocationClientOption locationOption;
     private String[] locations;
+    private int si,pi;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,16 +40,18 @@ public class Diary extends AppCompatActivity implements AMapLocationListener {
         editText = (EditText) findViewById(R.id.content_text);
         handler = new MaiHandler(new WeakReference<>(this));
         locations = new String[2];
-        this.content = getIntent().getStringExtra("content");
+        Intent intent = getIntent();
+        this.content = intent.getStringExtra("content");
+        this.si = intent.getIntExtra("si",0);this.pi = intent.getIntExtra("pi",-1);
         editText.setText(content);
         //下面要注释回来
-//        initializeLocations();
+        initLocate();
     }
 
-    private void initializeLocations() {
+    private void initLocate() {
         //此方法只是设置各种参数然后开始定位，真正初始化位置是在后续回调方法中
-        Log.i(tag,"initializeLocation>");
         locationClient = new AMapLocationClient(this);
+        i("initLocate>>");
         locationOption = new AMapLocationClientOption();
         locationClient.setLocationListener(this);
         locationOption.setLocationMode(
@@ -54,16 +59,18 @@ public class Diary extends AppCompatActivity implements AMapLocationListener {
         locationOption.setOnceLocation(true);
         locationClient.setLocationOption(locationOption);
         locationClient.startLocation();
-        Log.i(tag,"<initializeLocation");
+        i("location located",locationClient);
+        i("<<");
         //startLocation()后系统会自动调用onLocationChanged方法从而初始化AMapLocation对象
     }
 
     @Override
     public void onLocationChanged(AMapLocation aMapLocation) {
-        Log.i(tag,"onLocationChanged>");
+        i("aMapLocation",aMapLocation);
         if (aMapLocation != null) {
             if (aMapLocation.getErrorCode() == 0) {
                 this.locations[0] = aMapLocation.getProvince();
+                i("province?",locations[0]);
                 this.locations[1] = aMapLocation.getCity();
                 Log.i(tag,"province/city:"+locations[0]+"/"+locations[1]);
             } else {
@@ -104,7 +111,7 @@ public class Diary extends AppCompatActivity implements AMapLocationListener {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        Log.i(tag,"onOptionsItemSelected>");
+        i("onOptionsItemSelected>");
         // Handle presses on the action bar items
         switch (item.getItemId()) {
         case R.id.action_send:
@@ -114,10 +121,14 @@ public class Diary extends AppCompatActivity implements AMapLocationListener {
             writeToServer.putString("email",email);
             content = content.equals("")? "default content": content;
             writeToServer.putString("content",content);
+            //todo:模拟器限制，暂行直接传输参数作为获取地理位置的结果
+            locations[0] = "广东";locations[1] = "广州";
             writeToServer.putString("province",locations[0]);
             writeToServer.putString("city",locations[1]);
             writeToServer.putString("requestType","initContent");
-            Log.i("tag","writeToServer?"+writeToServer);
+            writeToServer.putInt("si",si);
+            writeToServer.putInt("pi",pi);
+            i("writeToServer?",writeToServer);
             ExecutorService es = Executors.newSingleThreadExecutor();
             es.submit(new CMT(writeToServer));
             Intent intent = new Intent(Diary.this,Kells.class);

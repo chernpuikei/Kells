@@ -1,30 +1,69 @@
 package com.example.chenpeiqi.kells;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
+import android.content.ServiceConnection;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static com.example.chenpeiqi.kells.Tool.ii;
 
 public class MainActivity extends AppCompatActivity {
+
+    private LoadData loadData;
+    private boolean serviceConnected;
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName componentName,IBinder iBinder) {
+            ii("#MainActivity# onServiceConnected");
+            LoadData.MyBinder check = (LoadData.MyBinder) iBinder;
+            loadData = check.getService();
+            serviceConnected = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        SharedPreferences data = getSharedPreferences("status",MODE_PRIVATE);
-        String email = data.getString("email","aaa");
-        Class destination = email.equals("nah")? Intro.class: Kells.class;
-        Intent intent = new Intent(this,destination);
-        Log.i("sha1",sHA1(this));
-        startActivity(intent);
+        Log.i("start","******************************");
+        clearDB(false);
+        bindService(new Intent(this,LoadData.class),serviceConnection,BIND_AUTO_CREATE);
+        startACTWhenReady();
+    }
+
+    private void startACTWhenReady(){
+        ii("#MainActivity# startACTWhenReady>>");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while(!serviceConnected){
+                    try{
+                        ii("#MainActivity# 2.5.service not connected");
+                        Thread.sleep(100);
+                    } catch(InterruptedException e){
+                        e.printStackTrace();
+                    }
+                }
+                ii("#MainActivity# 3.service connected,about to start Kells");                startActivity(new Intent(MainActivity.this,Kells.class));
+            }
+        }).start();
     }
 
     public static String sHA1(Context context) {
@@ -38,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
             for (int i = 0;i<publicKey.length;i++) {
                 String appendString = Integer.toHexString(0xFF & publicKey[i])
                         .toUpperCase(Locale.US);
-                if (appendString.length() == 1)
+                if (appendString.length()==1)
                     hexString.append("0");
                 hexString.append(appendString);
                 hexString.append(":");
@@ -51,6 +90,15 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private void clearDB(boolean toTeOrNot) {
+        if (toTeOrNot) {
+            ExecutorService es = Executors.newSingleThreadExecutor();
+            Bundle bundle = new Bundle();
+            bundle.putString("requestType","clearDB");
+            es.submit(new CMT(bundle));
+        }
     }
 
 }

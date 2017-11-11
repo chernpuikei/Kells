@@ -13,9 +13,8 @@ import android.widget.ImageView;
 import static com.example.chenpeiqi.kells.Tool.sample;
 
 /**
- * Created on 2016/12/15.
+ * Created on 2017/10/23.
  */
-
 public class IntroFragment extends Fragment {
 
     private static final String tag = "IntroFragment";

@@ -1,6 +1,7 @@
 package com.example.chenpeiqi.kells;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -16,74 +17,108 @@ import java.util.concurrent.Executors;
 import static com.example.chenpeiqi.kells.Tool.*;
 
 /**
+ * 返回所需数据，有则传递，无则创建
  * Created on 16/11/9.
  */
 class DataLoader implements Callable<Bundle> {
 
-    private Bundle request;
-    private static final int verCount = 15;
+    private static final int verCount = 30;
     private static final int pw = 40;
     private static int width, height;
+    private static final int taMinWidth = 1080/3;
+    private Bundle request = new Bundle();
 
-    DataLoader(Context context,Bundle origin) {
-        this.request = origin;
-        width = origin.getInt("width");
-        height = origin.getInt("height");
+    //Todo:所有DataLoader构造方法的意义都在于将非context数据放入requestBundle中
+    DataLoader(Context context) {
+        ii("#DataLoader");
+        SharedPreferences sp = SP.getSP(context);
+        width = sp.getInt("width",0); height = sp.getInt("height",0);
+        request.putString("email",sp.getString("email","aaa"));
+        request.putInt("si",sp.getInt("si",0));
+        request.putInt("pi",sp.getInt("pi",-1));
+        request.putString("requestType","requestCanvas");
+    }
+
+    DataLoader(Context context,float[] posTan,float[] path) {//initCanvas
+        new DataLoader(context);
+        request.remove("requestType");
+        request.putString("requestType","initCanvas");
+        request.putFloatArray("posTan",posTan);
+        request.putFloatArray("path",path);
+    }
+
+    DataLoader(Context context,int pi) {
+        new DataLoader(context);
+        request.remove("requestType");
+        request.putString("requestType","requestContent");
+    }
+
+    DataLoader(Context context,String content) {
+        new DataLoader(context);
+        request.remove("requestType");
+        request.putString("requestType","initContent");
+        request.putString("content",content);
     }
 
     @Override
     public Bundle call() throws Exception {
-        Bundle BFS = pullRequestPushResult();//BundleFromServer
-        String resType = BFS.getString("respondType");
-        boolean result = BFS.getBoolean("result");
-        return resType.equals("requestCanvas")? result?
-                plusTA(BFS): initPathAndPos(): BFS;
+        ii("#DataLoader# call()>>");
+        //Todo:send requestService
+        Bundle reply = sendRequest(request);
+
+        boolean reqCan = reply.getString("respondType").equals("requestCanvas"),
+                conExi = reply.getBoolean("content_exist"),
+                canExi = reply.getBoolean("canvas_exist");
+        //todo:canvas_exist && content_exist > edit(reply)
+        //todo:canvas_exist & !content_exist > return
+        //todo:!canvas_exist > init()
+        return reqCan? canExi? conExi? edit(reply): reply: edit(init()): reply;
     }
 
-    private Bundle pullRequestPushResult() throws Exception {
+    private Bundle sendRequest(Bundle bundle) throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Bundle result = executor.submit(new CMT(this.request)).get();
+        Bundle result = executor.submit(new CMT(bundle)).get();
         executor.shutdown();
         return result;
     }
 
     //requestCanvas从服务器获取结果为false时产生创建结果返回上层且同步至服务器
-    private Bundle initPathAndPos() {//here to generate path
-        i("drawTextFrame","initPathAndPos>");
+    private Bundle init() {//here to generate path
+        ii("#DataLoader# init()>>");
         Bundle output = new Bundle();
         String[] date = new Date().toString().split(" ");
-        Cord start = new Cord(0,0);//chose a crush position
-        float[] path = generatePath(start);
-        array("path generated",path,2);
-        float[] controls = getControls(path);
-        array("controls",controls,2);
-        float[] wholePath = new float[path.length+controls.length];
-        wholePath[0] = path[0]; wholePath[1] = path[1];
-        for (int i = 0;i<path.length/2-1;i++) {
-            wholePath[i*4+2] = controls[i*2]; wholePath[i*4+3] = controls[i*2+1];
-            wholePath[i*4+4] = path[i*2+2]; wholePath[i*4+5] = path[i*2+3];
-        }
-        array("wholePath",wholePath,2);
-        output.putFloatArray("path",path);
+        Cord start = new Cord(width,height,0,0);//chose a crush position
+        float[] path = generatePath(start); array("path generated",path,2);
+        float[] wholePath = addCpAndReturn(path); array("wholePath",wholePath,2);
         float[] posTan = initPosTan(wholePath,Integer.parseInt(date[5]),date[1]);
+        array("posTan init",posTan,4);
+        output.putFloatArray("path",path);
         output.putFloatArray("posTan",posTan);
-        array("posTan",posTan,4);
         synchronizeCanvas(output);
-        output = plusTA(output);
         return output;
     }
 
-    static float[] getControls(float[] fPath) {
-        float[] con = new float[fPath.length-2];
+    private static float[] addCpAndReturn(float[] fPath) {
+        array("para",fPath,2);
         int quaCount = fPath.length/2-1;
+        float[] controls = new float[quaCount*2];
         for (int i = 0;i<quaCount;i++) {
             float[][] cons = new float[][]{new float[]{fPath[i*2],fPath[i*2+3]},
                     new float[]{fPath[i*2+2],fPath[i*2+1]}};
             float[] curCon;
             curCon = notOnAxis(cons[0])? cons[0]: cons[1];
-            con[i*2] = curCon[0]; con[i*2+1] = curCon[1];
+            controls[i*2] = curCon[0]; controls[i*2+1] = curCon[1];
         }
-        return con;
+        float[] wholePath = new float[fPath.length+controls.length];
+        wholePath[0] = fPath[0]; wholePath[1] = fPath[1];
+        for (int i = 0;i<fPath.length/2-1;i++) {
+            wholePath[i*4+2] = controls[i*2];
+            wholePath[i*4+3] = controls[i*2+1];
+            wholePath[i*4+4] = fPath[i*2+2];
+            wholePath[i*4+5] = fPath[i*2+3];
+        }
+        array("result",wholePath,2);
+        return wholePath;
     }
 
     /**
@@ -93,70 +128,39 @@ class DataLoader implements Callable<Bundle> {
         return cord[0]!=width/2 && cord[1]!=height/2;
     }
 
-    static boolean getHOVByEnd(float endX) {
-        return endX==0 || endX==width/2;
-    }
-
-    static Path arrayToActual(float[] pathArray) {
-        float[] dxy = getCurrentDelta((int) pathArray[6]);
-        float dx = dxy[0], dy = dxy[1];
-        Path path = new Path();
-        path.moveTo(pathArray[0]+dx,pathArray[1]+dy);
-        path.quadTo(pathArray[2]+dx,pathArray[3]+dy,pathArray[4]+dx,pathArray[5]+dy);
-        return path;
-    }
-
-    private static float[] getCurrentDelta(int quadrant) {
-        float[] deltas = new float[2];
-        switch (quadrant) {
-        case 0:
-        case 1:
-            deltas[0] = 0;
-            break;
-        default:
-            deltas[0] = width/2;
-            break;
+    static Path[] arrayToActual(float[] pathArrays) {
+        array("path array",pathArrays,2);
+        int quadCount = (pathArrays.length-2)/4;
+        Path[] paths = new Path[quadCount];
+        for (int i = 0;i<quadCount;i++) {
+            Path current = new Path();
+            current.moveTo(pathArrays[i*4],pathArrays[i*4+1]);
+            current.quadTo(pathArrays[i*4+2],pathArrays[i*4+3],
+                    pathArrays[i*4+4],pathArrays[i*4+5]);
+            paths[i] = current;
         }
-        switch (quadrant) {
-        case 0:
-        case 3:
-            deltas[1] = 0;
-            break;
-        default:
-            deltas[1] = height/2;
-            break;
-        }
-        return deltas;
+        return paths;
     }
 
-    private boolean htv(float[] subPath) {//Horizontal To Vertical
-        return !(Math.abs(subPath[2]-subPath[0])==width/2 ||
-                Math.abs(subPath[3]-subPath[1])==height/2);
-    }
-
-    private Bundle plusTA(Bundle bFromS) {
-        i("drawTextFrame","plusTA>");
-        //requestContent中的posTan为空
+    private Bundle edit(Bundle bFromS) {
+        ii("#Dataloader edit>>");
         float[] path = bFromS.getFloatArray("path");
         bFromS.putFloatArray("path",path);
-
         float[] posTan = bFromS.getFloatArray("posTan");
-        bFromS.putFloatArray("pt",posTan);
-        i("drawTextFrame","ta 2b put");
-        float[] ta = listToArray(calTA(posTanX4(posTan),0,width,true));
+        bFromS.putFloatArray("posTan",posTan);
+        ArrayList<ArrayList<float[]>> textArea = calTA(path,posTan);
+        aoaofa("ta calculated",textArea,2);
+        float[] ta = listToArray(textArea);
+        array("ta to put",ta,4);
         bFromS.putFloatArray("ta",ta);
-        i("drawTextFrame","ta put");
-
+        array("ta calculated",ta,4);
         bFromS.putInt("verCount",verCount);
 
         String[] dirs = getDirs(path);
         bFromS.putStringArray("dirs",dirs);
 
-        int[] belong = calBelong(ta,verCount);
-        bFromS.putIntArray("areaBelong",belong);
-//        boolean lor = Math.random()>0.5;
-//        bFromS.putBoolean("lor",lor);
-//
+//        int[] belong = calBelong(ta,verCount);
+//        bFromS.putIntArray("areaBelong",belong);
 //        int[] es = calEndStart(ta.length/2,belong,lor);
 //        bFromS.putIntArray("es",es);
 //        float[] ori = calOri(ta,es,lor);
@@ -169,7 +173,7 @@ class DataLoader implements Callable<Bundle> {
 //        float[][] selected = splitRect(posTan,cps,path);//check
 //        bFromS.putFloatArray("areaZero",selected[0]);
 //        bFromS.putFloatArray("areaOne",selected[1]);
-        i("drawTextFrame","<plusTA");
+        i("bFromS to return",bFromS);
         return bFromS;
     }
 
@@ -200,25 +204,17 @@ class DataLoader implements Callable<Bundle> {
     }
 
     private float[][] splitRect(float[] posTan,float[] cps,float[] path) {
-        start();
         float[][] result = new float[2][];
         for (int i = 0;i<2;i++) {
             result[i] = select(posTan,new float[]{cps[i*4],cps[i*4+1]},
                     new float[]{cps[i*4+2],cps[i*4+3]},i==0,path);
         }
-        end();
         return result;
     }
 
     private float[] calOri(float[] ta,int[] es,boolean lor) {
-        array("ta",ta);
-        array("es",es);
-        i("lor",lor);
-        i("ta.length",ta.length);
         float ah = height/verCount;
-        i("check","es[1]",es[1]);
         int endXCounter = 2*es[0]+(lor? 0: 1), staXCounter = 2*es[1]+(lor? 1: 0);
-        i("check","endXCounter/staXCounter",endXCounter+"/"+staXCounter);
         float endX = ta[endXCounter], staX = ta[staXCounter],
                 endY = (es[0]+1)*ah, staY = es[1]*ah;
         return new float[]{endX,endY,staX,staY};
@@ -226,8 +222,6 @@ class DataLoader implements Callable<Bundle> {
 
     private float[] select(float[] posTan,float[] ori,float[] des,boolean which,float[] path) {
         i("starting to select>");
-        array("ori",ori);
-        array("des",des);
         boolean hor = des[0]>ori[0], ver = des[1]>ori[1];//确定起终点关系
         ArrayList<float[]> firstSelect = new ArrayList<>();
         for (int i = 0;i<posTan.length/4;i++) {//迭代posTan,同关系者添加至chosen
@@ -294,7 +288,6 @@ class DataLoader implements Callable<Bundle> {
             resorted[i*2] = originResult[transCounter*2];
             resorted[i*2+1] = originResult[transCounter*2+1];
         }
-        array("fuck","resort from selected",resorted);
         return resorted;
     }
 
@@ -316,58 +309,60 @@ class DataLoader implements Callable<Bundle> {
             returnResult[(i+1)*2] = setForACheck.get(i)[0];
             returnResult[(i+1)*2+1] = setForACheck.get(i)[1];
         }
-        array("before edit",returnResult);
-        i("tob",tob);
-        i("which",which);
         if (!same(tob,which)) returnResult[returnResult.length-1] = which? height: 0;
-        array("after edit",returnResult);
         return returnResult;
     }
 
+    //todo:getting total path array from previous end
     private float[] generatePath(Cord preEnd) {
+        i("generatePath>");
         int maxCounter = Math.random()>0.66? 4: 3;
         float[] path = new float[(maxCounter+1)*2];
-        Cord newSta = new Cord(preEnd);
-        path[0] = newSta.getX(); path[1] = newSta.getY();
+        Cord newSta = new Cord(width,height,preEnd);//switch from end to start
+        path[0] = newSta.getX(); path[1] = newSta.getY();//storage new start
         for (int i = 0;i<maxCounter;i++) {
-            i(i+">>>>>>>>>>>>>>>>>>>");
-            i("sta","("+newSta.getX()+","+newSta.getY()+")");
+            i(i+">>>>>>>>>>>>>>>");
             boolean toCrush = i==maxCounter-1;
-            i("onEdge",newSta.onEdge());
+            i("toCrush?",toCrush);
 //            int curQua = newSta.onEdge()? newSta.getQuad():
 //                    calQuadrant(newSta,new Cord(path[(i-1)*2],path[(i-1)*2+1]));
-            int curQua = 0;
-            if (newSta.onEdge()) {
+            int curQua = newSta.getQuad();
+            i("curQua",curQua);
+            if (newSta.onEdge()) {//iterating each quadrant,sometimes middle
+                i("onEdge()");
+                //!onEdge() means it's the first quadrant init on this screen
                 curQua = newSta.getQuad();
-                i("newSta.getQuad()",newSta.getQuad());
             } else {
-                int preQua = calQuadrant(
-                        newSta,new Cord(path[(i-1)*2],path[(i-1)*2+1]));
-                i("preQua",preQua);
+                i("!onEdge()");
+                //todo:1.find out every single sibling quadrant of current
                 int[] siblingQua = newSta.getSiblingQuad();
                 array("siblingQua",siblingQua,2);
+                //todo:2.find out the very quadrant that preCord belongs
+                Cord preCord = new Cord(width,height,path[(i-1)*2],path[(i-1)*2+1]);
+                int preQua = calQuadrant(newSta,preCord);
+                i("preQua",preQua);
+                //todo:3.exclude (2) from (1)
                 for (int j = 0;j<2;j++) {
                     if (siblingQua[j]!=preQua) {
                         curQua = siblingQua[j];
                     }
                 }
-                i("inner curQua",curQua);
+                i("curQua(sibling-pre)",curQua);
             }
-            i("curQua",curQua);
-            Cord curEnd = new Cord(newSta,toCrush,curQua);
-            i("end","("+curEnd.getX()+","+curEnd.getY()+")");
+            Cord curEnd = new Cord(newSta,toCrush,curQua,width,height);
+            i("curEndX",curEnd.getX()); i("curEndY",curEnd.getY());
             path[(i+1)*2] = curEnd.getX(); path[(i+1)*2+1] = curEnd.getY();
             newSta = curEnd;
         }
-        i("<<<<<<<<<<<<<<<<<<<<<");
-        array("path generated",path,2);
+        array("path/return",path,2);
         return path;
     }
 
+    //todo:用当前点和之前点的中点算出所在象限
     private int calQuadrant(Cord current,Cord previous) {
         float x = (current.getX()+previous.getX())/2,
                 y = (current.getY()+previous.getY())/2;
-        Cord middle = new Cord(x,y);
+        Cord middle = new Cord(width,height,x,y);
         return middle.getQuad();
     }
 
@@ -375,14 +370,8 @@ class DataLoader implements Callable<Bundle> {
         boolean[] hovs = new boolean[2];
         for (int i = 0;i<locs.length;i++) {
             switch (locs[i]) {
-            case "l":
-            case "r":
-                hovs[i] = true;
-                break;
-            case "t":
-            case "b":
-                hovs[i] = false;
-                break;
+                case "l": case "r": hovs[i] = true; break;
+                case "t": case "b": hovs[i] = false; break;
             }
         }
         return same(hovs[0],hovs[1]);
@@ -399,29 +388,31 @@ class DataLoader implements Callable<Bundle> {
     }
 
     private float[] initPosTan(float[] fPath,int year,String month) {
+        array("para-fPath",fPath,2); i("para-year",year); i("para_month",month);
         Path[] paths = getPaths(fPath);
-        array("fPath",fPath,2);
         float totalLength = 0;
-        float[] curQuadDis = new float[(fPath.length-2)/4];//each quad path's length
-        for (int i = 0;i<paths.length;i++) {//whole length
-            curQuadDis[i] = new PathMeasure(paths[i],false).getLength();
-            totalLength += curQuadDis[i];
+        float[] quaDis = new float[(fPath.length-2)/4];//each quad path's length
+        i("quaDis.length(aka quadCount)",quaDis.length);
+        for (int i = 0;i<quaDis.length;i++) {//whole length
+            i("which quad?"+i);
+            //todo:calculate path length of each quadrant then sum it together
+            quaDis[i] = new PathMeasure(paths[i],false).getLength();
+            i("cur dis",quaDis[i]);
+            totalLength += quaDis[i];
+            i("current total",totalLength);
         }
+        i("total length",totalLength);
         int dayCount = howManyDays(year,transMon(month));
+        i("dayCount?",dayCount);
         float stepLength = totalLength/(dayCount+1);
-        i("path length",totalLength);
-        i("dayCount",dayCount);
-        i("stepLength",stepLength);
         float[] posTan = new float[dayCount*4];
         int curStep = 0;
         boolean sod = true;
         float steppedDis = stepLength;//?????WHY '0' error?
-        for (int i = 0;i<paths.length;i++) {//try each of the quadrant
-            i("currentPath/all",i+"/"+paths.length);
-            i("current disTotals",curQuadDis[i]);
-            while (steppedDis<curQuadDis[i] && curStep<dayCount) {
-                i("steppedDis/currentTotal",steppedDis+"/"+curQuadDis[i]);
-                i("curStep/day_count",curStep+"/"+dayCount);
+        for (int i = 0;i<paths.length;i++) {//iterate each path in the quad
+            i("quad ordinal",i);
+            while (steppedDis<quaDis[i] && curStep<dayCount) {//generate footsteps
+                i("steppedDis/curQuadDis",steppedDis+"/"+quaDis[i]);
                 float[] pos_t = new float[2], tan_t = new float[2];
                 new PathMeasure(paths[i],false).getPosTan(steppedDis,pos_t,tan_t);
                 pos_t = trans(pos_t,tan_t,sod); pos_t = randomizePosition(pos_t);
@@ -430,41 +421,26 @@ class DataLoader implements Callable<Bundle> {
                 posTan[4*curStep+2] = tan_t[0]; posTan[4*curStep+3] = tan_t[1];
                 curStep++;
                 steppedDis += stepLength;
-                i("inner steppedDis",steppedDis);
             }
-            steppedDis -= curQuadDis[i];//将余下距离算入下一个quadrant的起点距离
-            i("outer stepped dis",steppedDis);
+            steppedDis -= quaDis[i];//将余下距离算入下一个quadrant的起点距离
         }
-        array("posTan",posTan,4);
+        array("posTan to return",posTan,4);
         return posTan;
     }
 
     private Path[] getPaths(float[] fPath) {
+        array("fPath(para) of getPaths()",fPath,2);
         Path[] paths = new Path[(fPath.length-2)/4];
         for (int i = 0;i<paths.length;i++) {
             Path curContour = new Path();
             curContour.moveTo(fPath[i*4],fPath[i*4+1]);
             curContour.quadTo(fPath[i*4+2],fPath[i*4+3],fPath[i*4+4],fPath[i*4+5]);
+            PathMeasure pm = new PathMeasure(curContour,false);
+            i("curContour.length",pm.getLength());
             paths[i] = curContour;
         }
+        i("paths.length",paths.length);
         return paths;
-    }
-
-    private float[] calDeltaFromQuad(int quadrant) {
-        int deltaX = 0, deltaY = 0;
-        switch (quadrant) {
-        case 1:
-            deltaY = height/2;
-            break;
-        case 2:
-            deltaX = width/2;
-            deltaY = height/2;
-            break;
-        case 3:
-            deltaX = width/2;
-            break;
-        }
-        return new float[]{deltaX,deltaY};
     }
 
     private float[] randomizePosition(float[] originalPosition) {
@@ -501,73 +477,122 @@ class DataLoader implements Callable<Bundle> {
         return res;
     }
 
-    private float[] getAll(Path path) {
-
-        PathMeasure pathMeasure = new PathMeasure(path,false);
-        int length = (int) pathMeasure.getLength();   //测量路径长度
-        float[] positions = new float[length*4];
-        for (int i = 0;i<length;i++) {
-            float[] cord = new float[2];
-            float[] tan = new float[2];
-            if (pathMeasure.getPosTan(i,cord,tan)) {
-                positions[i*2] = cord[0];
-                positions[i*2+1] = cord[1];
-                positions[i*4+2] = tan[0];
-                positions[i*4+3] = tan[1];
-            }
+    private float[] getAoA(Path[] paths) {
+        //todo:from path array to posTan multi
+        ArrayList<float[]> storeFpOfEachQua = new ArrayList<>();
+        for (int i = 0;i<paths.length;i++) {
+            storeFpOfEachQua.add(getAll(paths[i]));
         }
-        return positions;
-    }
-
-    /**
-     * 原理：遍历posTan，根据当前fp的纵坐标确定所属verCount然后和当前最大最小值比对
-     * 小于最小值则更新最小值，大于最大值则更新最大值,
-     * 对于占用四个quadrant的path要左右分开算然后合并
-     */
-    private ArrayList<ArrayList<float[]>> calTA(float[] posTan,float l,float r,boolean split) {
-        ArrayList result;
-        //目前根据traQuaCount的不同返回的不是同一样东西
-        if (split) {
-            float[] multiPosTan = multiPosTan(posTan);//一变四
-            ArrayList<float[]> dlr = deliverLeftRight(multiPosTan);//DeliverLeftRight
-            float[] tal = getPathBound(dlr.get(0),0,width/2),
-                    tar = getPathBound(dlr.get(1),width/2,width);//算出左右TA
-
-            ArrayList left = rTA(tal,0,width/2), right = rTA(tar,width/2,width);
-            arrayListX2("left",left); arrayListX2("right",right);
-            result = mergeTAS(left,right);
-        } else {
-            float[] pathBound = getPathBound(posTan,0,width);
-            result = rTA(pathBound,l,r);
-        }
-        arrayListX2("calTA result",result);
+        float[] result = posTansOnPaths(storeFpOfEachQua); array("result",result,4);
         return result;
     }
 
-    private float[] getPathBound(float[] posTan,float l,float r) {
-        float[] acd = new float[verCount*2];//储存text area左右界
-        for (int j = 0;j<verCount;j++) {
-            acd[j*2] = r; acd[j*2+1] = l;//左边找最小值右边找最大值
+    private float[] posTansOnPaths(ArrayList<float[]> mergedQuadrant) {
+        int qc = mergedQuadrant.size(), total = 0;
+        for (int i = 0;i<qc;i++) {//先计算出所包含的总浮点数
+            total += mergedQuadrant.get(i).length;
         }
-        int length = posTan.length/4;
-        for (int i = 0;i<length;i++) {
-            int a = (int) posTan[i*4+1]*verCount/height;//--->/(size[1]/10)
-            a = a>=verCount? verCount-1: a;
-            acd[a*2] = Math.min(posTan[i*4]-10,acd[a*2]);
-            acd[a*2+1] = Math.max(posTan[i*4]+10,acd[a*2+1]);
+        float[] result = new float[total];
+        int previousBase = 0;
+        for (int i = 0;i<qc;i++) {
+            float[] curToCopy = mergedQuadrant.get(i);
+            for (int j = 0;j<mergedQuadrant.get(i).length;j++) {
+                result[previousBase+j] = curToCopy[j];
+            }
+            previousBase += curToCopy.length;
         }
-        return acd;
+        return result;
     }
 
-    private float[] multiPosTan(float[] posTan) {
+    private float[] getAll(Path path) {
+        //todo:chop Path of a quadrant into a lot of footprints
+        PathMeasure pathMeasure = new PathMeasure(path,false);
+        int length = (int) pathMeasure.getLength();   //测量路径长度
+        ArrayList<float[]> positions = new ArrayList<>();
+        for (int i = 0;i<length;i += 75) {
+            float[] cord = new float[2];
+            float[] tan = new float[2];
+            if (pathMeasure.getPosTan(i,cord,tan)) {
+                positions.add(merge(cord,tan));
+            }
+        }
+        float[] result = new float[positions.size()*4];
+        for (int i = 0;i<positions.size();i++) {
+            System.arraycopy(positions.get(i),0,result,i*4,4);
+        }
+        return result;
+    }
+
+    private ArrayList<ArrayList<float[]>> calTA(float[] path,float[] posTan) {
+        //1.add cp for path(float[])
+        //2.transform float array into Path
+        //3.get posTan every 10 pixels on Path
+        //4.split posTan into left side and right side
+        //5.get path bound from existing posTan on both side
+        //6.reverse path bound into ta pieces
+        //7.merge both side ta pieces into one
+        float[] multiPosTan = oneToOne(getAoA(arrayToActual(addCpAndReturn(path))));
+        float[] newPosTan = merge(multiPosTan,oneToFour(posTan));
+        ArrayList<float[]> dlr = split(newPosTan);//四变二
+        float[] pbl = getPB(dlr.get(0),1), pbr = getPB(dlr.get(1),2);
+        ArrayList<ArrayList<float[]>> left = rPB(pbl,0,width/2),
+                right = rPB(pbr,width/2,width);
+        ArrayList<ArrayList<float[]>> merge = mergeTAS(left,right);
+        ArrayList<ArrayList<String>> directions = calSequence(merge);
+        ArrayList<ArrayList<float[]>> chosen = chooseProper(directions,merge);
+        aoaofa("chosen",chosen,4);
+        return chosen;
+    }
+
+    private boolean bothUoD(float[] path) {
+        int quadCount = path.length/2-1, hh = height/2;
+        boolean q4 = quadCount==4;
+        float staY = path[1], endY = path[path.length-1];
+        return q4 && ((staY>hh && endY>hh) || (staY<hh && endY<hh));
+    }
+
+    //status有三种状态:0代表全部，1代表左，2代表右
+    private float[] getPB(float[] posTan,int status) {
+        int max, min;
+        switch (status) {
+            default: max = width; min = 0; break;
+            case 1: max = width/2; min = 0; break;
+            case 2: max = width; min = width/2; break;
+        }
+        int taCount = verCount, fpCount = posTan.length/2;
+        float taWH = height/taCount;
+        float[] posTanBound = new float[taCount*2];//储存text area左右界
+        for (int j = 0;j<taCount;j++) {
+            posTanBound[j*2] = max; posTanBound[j*2+1] = min;//左边找最小值右边找最大值
+        }
+        for (int i = 0;i<fpCount;i++) {
+            int a = (int) (posTan[i*2+1]/taWH);//用posTan的纵坐标得出verCount
+            a = a>=taCount? taCount-1: a;//算出来的verCount如果刚好等于15算15
+            posTanBound[a*2] = Math.min(posTan[i*2],posTanBound[a*2]);//左界取最小
+            posTanBound[a*2+1] = Math.max(posTan[i*2],posTanBound[a*2+1]);//右界取最大
+        }
+        return posTanBound;
+    }
+
+    private float[] oneToOne(float[] posTan) {
+        float[] result = new float[posTan.length/2];
+        for (int i = 0;i<result.length/2;i++) {
+            result[i*2] = posTan[i*4]; result[i*2+1] = posTan[i*4+1];
+        }
+        return result;
+    }
+
+    private float[] oneToFour(float[] posTan) {//(posTan)One To Four
         float[] result = new float[posTan.length*2];
+        int r = 20;
         for (int i = 0;i<posTan.length/4;i++) {
-            float[] xWithDelta = new float[]{posTan[i*4]-5,posTan[i*4]+5},
-                    yWithDelta = new float[]{posTan[i*4+1]-5,posTan[i*4+1]+5};
+            float[] xWithDelta = new float[]{posTan[i*4]-r,posTan[i*4]+r},
+                    yWithDelta = new float[]{posTan[i*4+1]-r,posTan[i*4+1]+r};
             float[] cur = new float[8];
             for (int j = 0;j<2;j++) {
                 for (int k = 0;k<2;k++) {
-                    cur[j*4+k*2] = xWithDelta[j]; cur[j*4+k*2+1] = yWithDelta[k];
+                    cur[j*4+k*2] = xWithDelta[j];
+                    cur[j*4+k*2+1] = yWithDelta[k];
                 }
             }
             System.arraycopy(cur,0,result,i*8,8);
@@ -575,62 +600,62 @@ class DataLoader implements Callable<Bundle> {
         return result;
     }
 
-    private ArrayList<float[]> deliverLeftRight(float[] multi) {
+    private ArrayList<float[]> split(float[] multi) {
         ArrayList<float[]> left = new ArrayList<>(), right = new ArrayList<>();
         for (int i = 0;i<multi.length/2;i++) {
             (multi[i*2]<width/2? left: right)
                     .add(new float[]{multi[i*2],multi[i*2+1]});
         }
+        aofa("left split",left,2); aofa("right split",right,2);
         ArrayList<float[]> result = new ArrayList<>();
-        result.add(arrayListToArray(left)); result.add(arrayListToArray(right));
+        result.add(toArray(left)); result.add(toArray(right));
         return result;
     }
 
-    private float[] arrayListToArray(ArrayList<float[]> origin) {
+    private float[] toArray(ArrayList<float[]> origin) {
         float[] result = new float[origin.size()*2];
         for (int i = 0;i<origin.size();i++) {
-            result[i*2] = origin.get(i)[0]; result[i*2+1] = origin.get(i)[1];
+            result[i*2] = origin.get(i)[0];
+            result[i*2+1] = origin.get(i)[1];
         }
         return result;
     }
 
-    private ArrayList<ArrayList<float[]>> rTA(float[] ta,float l,float r) {
-        array("ta 2b r",ta,2); i("l",l); i("r",r);
+    private ArrayList<ArrayList<float[]>> rPB(float[] pb,float l,float r) {
+        array("pb para",pb,2);
+        //Todo:reverse过程中不考虑TA长度
         ArrayList<ArrayList<float[]>> reversed = new ArrayList<>();
         float vcHeight = height/verCount;
-        for (int i = 0;i<ta.length/2;i++) {
+        for (int i = 0;i<pb.length/2;i++) {//遍历VC
             ArrayList<float[]> curVC = new ArrayList<>();
             float curY = (float) (i+0.66)*vcHeight;
-            curVC.add(new float[]{l,curY,ta[i*2],curY});//未加Y坐标
-            if (ta[i*2+1]!=l && r!=ta[i*2]) {
-                curVC.add(new float[]{ta[i*2+1],curY,r,curY});
+            curVC.add(new float[]{l,curY,pb[i*2],curY});//加上左边
+            if (pb[i*2]!=r && pb[i*2+1]!=l) {//不是一整块
+                curVC.add(new float[]{pb[i*2+1],curY,r,curY});//加上右边
             }
             reversed.add(curVC);
         }
-        arrayListX2("Red",reversed);
         return reversed;
     }
 
     private ArrayList<ArrayList<float[]>> mergeTAS(
             ArrayList<ArrayList<float[]>> left,ArrayList<ArrayList<float[]>> right) {
         ArrayList<ArrayList<float[]>> totalVC = new ArrayList<>();
-        for (int i = 0;i<left.size();i++) {//left.size(),right.size()都是15
-            ArrayList<float[]> curVC = mergeTA(left.get(i),right.get(i));
-            totalVC.add(curVC);
-            i("current vc",i);
-            arrayListX1("left",left.get(i));
-            arrayListX1("right",right.get(i));
-            arrayListX1("total",curVC);
+        for (int i = 0;i<left.size();i++) {
+            ArrayList<float[]> curVC;
+            totalVC.add(curVC = mergeTA(left.get(i),right.get(i)));
+            i("VC-"+i,curVC);
         }
-        arrayListX2("total",totalVC);
         return totalVC;
     }
 
     //单行合并
-    private ArrayList<float[]> mergeTA(ArrayList<float[]> left,ArrayList<float[]> right) {
+    private ArrayList<float[]> mergeTA(
+            ArrayList<float[]> left,ArrayList<float[]> right) {
+        //right如果有两块，这里只加了一块
         int ls = left.size();
-        float[] leftLast = left.get(ls-1), rightSta = right.get(0);
-        if (leftLast[2]==rightSta[0]) {
+        float[] leftLast = left.get(ls-1), rightSta = right.get(0);//area on the left
+        if (leftLast[2]==rightSta[0]) {//两个接的上
             float[] md = new float[]{leftLast[0],leftLast[1],rightSta[2],rightSta[3]};
             left.remove(ls-1); right.remove(0);
             left.add(md); left.addAll(right);
@@ -638,43 +663,179 @@ class DataLoader implements Callable<Bundle> {
         return left;
     }
 
-    private float[] listToArray(ArrayList<ArrayList<float[]>> taJustMerged) {
-        arrayListX2("taJustMerged",taJustMerged);
-        int howMany = 0;
-        for (int i = 0;i<taJustMerged.size();i++) {
-            i("curVC",i);
-            ArrayList<float[]> curVC = taJustMerged.get(i);
-            for (int j = 0;j<curVC.size();j++) {
-                float[] curPiece = curVC.get(j);
-                if (curPiece[2]-curPiece[0]>width/3) {
-                    howMany++;
+    private ArrayList<ArrayList<String>> calSequence(
+            ArrayList<ArrayList<float[]>> mergedTAS) {
+        aoaofa("para-mergedTAS",mergedTAS,4);
+        ArrayList<ArrayList<String>>
+                firstRs = new ArrayList<>(), finalRs = new ArrayList<>();
+        int verCounter = -1;
+        for (ArrayList<float[]> mergedTA : mergedTAS) {//每层
+            i("curVer:"+(++verCounter));
+            ArrayList<String> curVC = new ArrayList<>();
+            //Todo:先将满足长度要求的ta pieces转化成direction
+            int pieceCounter = -1;
+            for (float[] curPiece : mergedTA) {//每片
+                i("curPiece:"+(++pieceCounter));
+                String nullCheck;
+                if ((nullCheck = calRelation(curPiece,true))!=null) {
+                    curVC.add(nullCheck);
+                }
+            }
+            //Todo:如果整层都没有满足长度要求的ta piece,去掉长度要求,全数添加
+            if (curVC.size()==0) {
+                for (float[] curPiece : mergedTA) {
+                    curVC.add(calRelation(curPiece,false));
+                }
+            }
+            firstRs.add(curVC);
+        }
+        aoaos("firstRs",firstRs);
+        for (int i = 0;i<verCount;i++) {
+            i("vc:"+i);
+//            i("+----vertical ordinal:",i);
+            //Todo: $last u $next -> $whole
+            ArrayList<String> last = i-1>=0? firstRs.get(i-1): null,
+                    next = i+1<verCount? firstRs.get(i+1): null;
+            i("finalRs.size():"+finalRs.size());
+            if (last==null) {
+                i("last null");
+            } else {
+                aos("last",last);
+            }
+            if (next==null) {
+                i("next null");
+            } else {
+                aos("next",next);
+            }
+            ArrayList<String> whole = last!=null && next!=null?
+                    merges(last,next,i): last==null? next: last;
+            //Todo: $whole n $current -> new $current
+            i("current i:"+i);
+            i("firstRs.size():"+firstRs.size());
+            ArrayList<String> curPR = separates(whole,firstRs.get(i),i);
+            finalRs.add(curPR);
+        }
+        aoaos("finalRs",finalRs);
+        return finalRs;
+    }
+
+    private ArrayList<ArrayList<float[]>> chooseProper(ArrayList<ArrayList<String>> directions,ArrayList<ArrayList<float[]>> oriTA) {
+        i("chooseProper>");
+        ArrayList<ArrayList<float[]>> result = new ArrayList<>();
+        for (int i = 0;i<directions.size();i++) {//i=>verPiece
+            ArrayList<String> curDir = directions.get(i);
+            ArrayList<float[]> curPie = oriTA.get(i);
+            result.add(curPie.size()==curDir.size()?
+                    curPie: choProper(curDir,curPie));
+        }
+        return result;
+    }
+
+    private ArrayList<float[]> choProper(ArrayList<String> curDir,ArrayList<float[]> curTA) {
+        i("choProper>");
+        ArrayList<float[]> result = new ArrayList<>();
+        //Todo:find right foot step matching current direction
+        for (int i = 0;i<curDir.size();i++) {
+            String sinDir = curDir.get(i);
+            for (int j = 0;j<curTA.size();j++) {
+                float[] sinTA = curTA.get(j);
+                String curTARel = calRelation(sinTA,true);
+                if (curTARel!=null && curTARel.equals(sinDir)) {
+                    result.add(curTA.get(j));
+                    break;
                 }
             }
         }
+        return result;
+    }
+
+    private ArrayList<String> merges(
+            ArrayList<String> last,ArrayList<String> next,int curPiece) {
+        //Todo:chose result as existing objects,elements of next as to-be-append objects
+        i(curPiece+">");
+        ArrayList<String> result = new ArrayList<>();
+        for (String aLast : last) {
+            result.add(aLast);
+        }
+        for (String currentToAppend : next) {
+            //Todo:set a flag as true
+            boolean addable = true;
+            //Todo:once compare object equals existing object,flag false
+            for (String currentToCompare : result) {
+                if (currentToAppend.equals(currentToCompare)) {
+                    addable = false;
+                }
+                i(currentToAppend+":"+currentToCompare+">>>"+addable);
+            }
+            //Todo:when compare completed,if flag still true append compare object
+            i(currentToAppend+":"+addable);
+            if (addable) result.add(currentToAppend);
+        }
+        return result;
+    }
+
+    private ArrayList<String> separates(
+            ArrayList<String> whole,ArrayList<String> current,int curVer) {
+        //Todo:逐个迭代current，删去和R的非公共元素
+        i(curVer+">"); aos("R",whole); aos("current",current);
+        ArrayList<String> result = new ArrayList<>();
+        for (String curToAdd : current) {
+            i(">>"); i("curToAdd/current",curToAdd+"/"+current);
+            //Todo:默认不添加,当等于(上下)全集中的任何一个元素时,添加
+            boolean addAble = false;
+            for (String currentToCompare : whole) {
+                i("curToCompare/whole>",currentToCompare+"/"+whole);
+                if (curToAdd.equals(currentToCompare)) {
+                    i(curToAdd+" addable");
+                    addAble = true;
+                }
+                i("<");
+            }
+            if (addAble) {
+                result.add(curToAdd);
+            }
+            i("current edit",result);
+            i("<<");
+        }
+        aos("result",result);
+        return result;
+    }
+
+    private String calRelation(float[] taPiece,boolean lengthLimit) {
+        boolean leftBound = taPiece[0]==0, rightBound = taPiece[2]==1080,
+                valuable = taPiece[2]-taPiece[0]>width/3;
+        i("valuable"+valuable);
+        String inGeneral = leftBound? rightBound? "whole": "left":
+                rightBound? "right": "middle";
+        return lengthLimit? valuable? inGeneral: null: inGeneral;
+    }
+
+    private float[] listToArray(ArrayList<ArrayList<float[]>> taJustMerged) {
+        aoaofa("ta",taJustMerged,2);
+        int howMany = 0;
+        for (ArrayList<float[]> curVC : taJustMerged) {
+            for (float[] curPiece : curVC) {
+                if (curPiece[2]-curPiece[0]>taMinWidth) {howMany++;}
+            }
+        }
         float[] arraylized = new float[howMany*4];
-        i("how many ta piece",howMany);
         int cur = 0;
-        for (int i = 0;i<taJustMerged.size();i++) {
-            ArrayList<float[]> curVC = taJustMerged.get(i);
-            for (int j = 0;j<curVC.size();j++) {
-                float[] curPiece = curVC.get(j);
-                if (curPiece[2]-curPiece[0]>width/3) {
+        for (ArrayList<float[]> curVC : taJustMerged) {
+            for (float[] curPiece : curVC) {
+                if (curPiece[2]-curPiece[0]>taMinWidth) {
                     System.arraycopy(curPiece,0,arraylized,cur*4,4);
                     cur++;
                 }
             }
         }
-        array("listToArray result",arraylized,4);
         return arraylized;
     }
 
     private ArrayList<ArrayList<float[]>> remove(ArrayList<ArrayList<float[]>> merged) {
         ArrayList<ArrayList<float[]>> result = new ArrayList<>();
-        for (int i = 0;i<merged.size();i++) {
-            ArrayList<float[]> curLineToGetFrom = merged.get(i),
-                    curLineToPutIn = new ArrayList<>();
-            for (int j = 0;j<curLineToGetFrom.size();j++) {
-                float[] curPiece = curLineToGetFrom.get(j);
+        for (ArrayList<float[]> aMerged : merged) {
+            ArrayList<float[]> curLineToPutIn = new ArrayList<>();
+            for (float[] curPiece : aMerged) {
                 if (curPiece[2]-curPiece[0]>width/3) {
                     curLineToPutIn.add(curPiece);
                 }
@@ -684,70 +845,36 @@ class DataLoader implements Callable<Bundle> {
         return result;
     }
 
-    private ArrayList<ArrayList<String>> calRelations(ArrayList<ArrayList<float[]>> list) {
-        ArrayList<ArrayList<String>> result = new ArrayList<>();
-        for (int i = 0;i<list.size();i++) {
-            ArrayList<String> curLine = new ArrayList<>();
-            ArrayList<float[]> restorePara;
-            for (int j = 0;j<(restorePara = list.get(i)).size();j++) {
-                curLine.add(calBelong(restorePara.get(j)));
-            }
-            result.add(curLine);
-        }
-        return result;
-    }
-
-//    private ArrayList<ArrayList<String>> calLMR(ArrayList<ArrayList<String>> relations) {
-//        String startOn, endOn;
-//        for (int i = 0;i<relations.size();i++) {
-//            String cf = relations.get(i).get(0);//current first
-//            if (!cf.equals("whole")) {
-//                startOn = cf; break;
-//            }
-//        }
-//        switch (startOn){
-//        case "left": endOn = "right";break;
-//        case"right":startOn = "left";break;
-//        }
-//    }
-
-    private String calBelong(float[] taPiece) {
-        boolean leftBound = taPiece[0]==0, rightBound = taPiece[2]==1080;
-        return leftBound? rightBound? "whole": "left": rightBound? "right": "middle";
-    }
-
     float[] subPosTan(int i,float[] posTan) {
         return new float[]{posTan[i*4],posTan[i*4+1],posTan[i*4+2],posTan[i*4+3]};
     }
 
     private int[] calEndStart(int verCount,int[] belong,boolean lor) {
         i("belong.length",belong.length);
-        array("belong",belong);
         i("verCount",verCount);
         i("lor",lor);
         int[] es = new int[]{0,verCount-1};
         for (int i = 0;i<verCount;i++) {
             i("current i",i);
             switch (belong[i]) {
-            case 1://仅左边可用,如lor为true应将此时的i更新为es[0]的最大值,如false
-                es[lor? 0: 1] = lor? Math.max(es[0],i): Math.min(es[1],i);
-                break;
-            case 2:
-                es[lor? 1: 0] = lor? Math.min(es[1],i): Math.max(es[0],i);
-                break;
-            case 3:
-                es[0] = Math.max(es[0],i); es[1] = Math.min(es[1],i);
-                break;
+                case 1://仅左边可用,如lor为true应将此时的i更新为es[0]的最大值,如false
+                    es[lor? 0: 1] = lor? Math.max(es[0],i): Math.min(es[1],i);
+                    break;
+                case 2:
+                    es[lor? 1: 0] = lor? Math.min(es[1],i): Math.max(es[0],i);
+                    break;
+                case 3:
+                    es[0] = Math.max(es[0],i); es[1] = Math.min(es[1],i);
+                    break;
             }
         }
-        i("end/start calculated",es[0]+"/"+es[1]);
+        i("se/se calculated",es[0]+"/"+es[1]);
         return es;
     }
 
     private float[] findCP(float[] path,float[] ori) {
         int pl = path.length;
         float[] check = new float[]{path[0],path[1],path[pl-2],path[pl-1]};
-        array("selected path",check);
         float[] wp = new float[]{-1,-1}, hp = new float[]{-1,-1};
         for (int i = 0;i<2;i++) {
             //一点被确定为wp,则另一点必然为hp
@@ -755,8 +882,6 @@ class DataLoader implements Callable<Bundle> {
                 i("which is wp",i);
                 wp[0] = check[i*2]; wp[1] = check[i*2+1];
                 hp[0] = check[(1-i)*2]; hp[1] = check[(1-i)*2+1];
-                array("certain wp",wp);
-                array("certain hp",hp);
                 break;
             }
         }
@@ -770,7 +895,6 @@ class DataLoader implements Callable<Bundle> {
         float[] result = new float[]{ori[0],ori[1],space_tob? hp[0]: wp[0],
                 space_tob? hp[1]: wp[1],ori[2],ori[3],space_tob? wp[0]: hp[0],
                 space_tob? wp[1]: hp[1]};
-        array("cps",result);
         return result;
     }
 
@@ -787,7 +911,6 @@ class DataLoader implements Callable<Bundle> {
     }
 
     private int[] calBelong(float[] ta,int verCount) {
-        array("ta",ta,4);
         int[] belonging = new int[verCount];
         for (int i = 0;i<verCount;i++) {
             if (ta[i*2]==width && ta[i*2+1]==0) {
@@ -816,174 +939,29 @@ class DataLoader implements Callable<Bundle> {
                 break;
             }
         }
-        //下面log不出来？
-        array("belonging",belonging,2);
         return belonging;
     }
 
     private int howManyDays(int year,int month) {
         switch (month) {
-        case 1:
-        case 3:
-        case 5:
-        case 7:
-        case 8:
-        case 10:
-        case 12:
-            return 31;
-        case 4:
-        case 6:
-        case 9:
-        case 11:
-            return 30;
-        case 2:
-            if (year%4==0) {
-                return 29;
-            } else {
-                return 28;
-            }
+            case 1: case 3: case 5: case 7: case 8: case 10: case 12:
+                return 31;
+            case 4: case 6: case 9: case 11:
+                return 30;
+            case 2:
+                return year%4==0? 29: 28;
         }
         return 0;
     }
 
     private static int transMon(String month) {
         switch (month) {
-        case "Jan": return 1; case "Feb": return 2; case "Mar": return 3;
-        case "Apr": return 4; case "May": return 5; case "Jun": return 6;
-        case "Jul": return 7; case "Aug": return 8; case "Sep": return 9;
-        case "Oct": return 10; case "Nov": return 11; case "Dec": return 12;
-        default: return 0;
+            case "Jan": return 1; case "Feb": return 2; case "Mar": return 3;
+            case "Apr": return 4; case "May": return 5; case "Jun": return 6;
+            case "Jul": return 7; case "Aug": return 8; case "Sep": return 9;
+            case "Oct": return 10; case "Nov": return 11; case "Dec": return 12;
+            default: return 0;
         }
-    }
-
-    private class Cord {
-
-        float x, y;
-
-        Cord(float x,float y) {
-            this.x = x; this.y = y;
-        }
-
-        /**
-         * 获取当前屏幕的起点
-         */
-        Cord(Cord previous) {
-            float px = previous.getX(), py = previous.getY();
-            if (px==0 && py==0) {
-                boolean hov = randomBoolean();
-                this.x = hov? randomBoolean()? 0: width: randomCord(width);
-                this.y = !hov? randomBoolean()? 0: height: randomCord(height);
-            } else {
-                boolean changeOnX = px==width || px==0;
-                if (changeOnX) {
-                    this.x = px==width? 0: width;
-                    this.y = py;
-                } else {
-                    this.x = px;
-                    this.y = py==height? 0: height;
-                }
-            }
-        }
-
-        Cord(Cord start,boolean crushOrNot,int curQuad) {
-            //所有终点生成区间
-            i("para.start",start.getX()+","+start.getY());
-            i("para.crushOrNot",crushOrNot);
-            i("para.curQuad",curQuad);
-            String[] AL = new String[2];//All Locations
-            switch (curQuad) {
-            case 0: case 1:
-                AL[0] = crushOrNot? "l": "r"; break;
-            default://here for case 2,case 3
-                AL[0] = crushOrNot? "r": "l";
-            }
-            switch (curQuad) {
-            case 0: case 3:
-                AL[1] = crushOrNot? "t": "b"; break;
-            default:
-                AL[1] = crushOrNot? "b": "t";
-            }
-            array("AL",AL,2);
-            String selfLoc = start.getLocInQua(curQuad);
-            i("self",selfLoc);
-            ArrayList<String> asd = new ArrayList<>();//Possible After Self Deleted
-            for (int i = 0;i<2;i++) {
-                if (!AL[i].equals(selfLoc)) {
-                    asd.add(AL[i]);
-                }
-            }
-            String finalLoc = asd.get(asd.size()==2? (int) (Math.random()/0.5): 0);
-            i("finalLoc",finalLoc);
-            //还没有生成坐标
-            //loc X quad=>(x,y)
-            float[] deltas = calDeltaFromQuad(curQuad);
-            float dx = deltas[0], dy = deltas[1];
-            i("dx",dx); i("dy",dy);
-            switch (finalLoc) {
-            case "l": this.x = dx; break;
-            case "r": this.x = width/2+dx; break;
-            default: this.x = (float) (Math.random()*width/4+width/8+dx);
-            }
-            switch (finalLoc) {
-            case "t": this.y = dy; break;
-            case "b": this.y = height/2+dy; break;
-            default: this.y = (float) (Math.random()*height/4+height/8+dy);
-            }
-            i("init","("+x+","+y+")");
-        }
-
-        float randomCord(float woh) {
-            return (float) (woh/8+Math.random()*woh/4+(randomBoolean()? 0: woh/2));
-        }
-
-        boolean onEdge() {return x==width || x==0 || y==height || y==0;}
-
-        int[] getSiblingQuad() {//这里的cord必然是坐标轴上的点
-            String loc = this.getLocOnAxis();
-            int[] result = new int[2];
-            switch (loc) {
-            case "t": case "l":
-                result[0] = 0; break;
-            default:
-                result[0] = 2;
-            }
-            switch (loc) {
-            case "l": case "b":
-                result[1] = 1; break;
-            default:
-                result[1] = 3;
-            }
-            return result;
-        }
-
-        String getLocInQua(int quadrant) {
-            //确定坐标轴上的点相对于当前quad处在什么位置
-            String l_c = getLocOnAxis();
-            switch (l_c) {
-            case "t":
-                return quadrant==0? "r": "l";
-            case "b":
-                return quadrant==1? "r": "l";
-            case "l":
-                return quadrant==0? "b": "t";
-            default:
-                return quadrant==3? "b": "t";
-            }
-        }
-
-        String getLocOnAxis() {//确定在坐标轴上的点是那个
-            boolean hov = y==height/2;
-            return hov? x<width/2? "l": "r": y<height/2? "t": "b";
-        }
-
-        int getQuad() {
-            boolean hor = x<width/2;
-            return same(hor,y<height/2)? hor? 0: 2: hor? 1: 3;
-        }
-
-        float getX() { return this.x;}
-
-        float getY() { return this.y;}
     }
 
 }
